@@ -6,30 +6,30 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 /**
- * SCMÓò²¹»õ½¨ÒéMyBatisÓ³ÉäÆ÷
+ * SCMåŸŸè¡¥è´§å»ºè®®MyBatisæ˜ å°„å™¨
  * <p>
- * ÃèÊö: ²¹»õ½¨ÒéÊı¾İ·ÃÎÊ²ã£¬Ìá¹©²¹»õ½¨ÒéµÄCRUD²Ù×÷¡£
+ * æè¿°: è¡¥è´§å»ºè®®æ•°æ®è®¿é—®å±‚ï¼Œæä¾›è¡¥è´§å»ºè®®çš„CRUDæ“ä½œã€‚
  * </p>
  *
- * @author ERPÏµÍ³
+ * @author ERPç³»ç»Ÿ
  */
 @Mapper
 public interface ReplenishmentSuggestionMapper {
 
-    /** ĞÂÔö²¹»õ½¨Òé */
+    /** æ–°å¢è¡¥è´§å»ºè®® */
     void insert(ReplenishmentSuggestionDO suggestion);
 
-    /** ¸üĞÂ²¹»õ½¨Òé */
+    /** æ›´æ–°è¡¥è´§å»ºè®® */
     void update(ReplenishmentSuggestionDO suggestion);
     
-    /** °´×â»§ID+½¨ÒéID²éÑ¯ */
+    /** æŒ‰ç§Ÿæˆ·ID+å»ºè®®IDæŸ¥è¯¢ */
     ReplenishmentSuggestionDO selectById(
             @Param("tenantId") String tenantId, @Param("suggestionId") String suggestionId);
 
-    /** °´×â»§ID²éÑ¯²¹»õ½¨ÒéÁĞ±í */
+    /** æŒ‰ç§Ÿæˆ·IDæŸ¥è¯¢è¡¥è´§å»ºè®®åˆ—è¡¨ */
     List<ReplenishmentSuggestionDO> selectByTenant(@Param("tenantId") String tenantId);
 
-    /** °´×â»§ID²éÑ¯´ı´¦Àí½¨Òé */
+    /** æŒ‰ç§Ÿæˆ·IDæŸ¥è¯¢å¾…å¤„ç†å»ºè®® */
     List<ReplenishmentSuggestionDO> selectPending(@Param("tenantId") String tenantId);
 
     List<ReplenishmentSuggestionDO> selectByStatus(

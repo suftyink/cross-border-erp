@@ -195,6 +195,11 @@ public class PurchaseStore {
         return Optional.of(toPurchaseOrderDomain(orderDO, lineDOs));
     }
 
+    public Optional<PurchaseOrder> lockPurchaseOrder(String tenantId, String poId) {
+        return Optional.ofNullable(purchaseMapper.lockOrder(tenantId, poId))
+                .map(order -> toPurchaseOrderDomain(order, purchaseMapper.selectLines(poId)));
+    }
+
     public List<PurchaseOrder> listPurchaseOrders(String tenantId) {
         return purchaseMapper.selectOrders(tenantId).stream()
                 .map(orderDO -> {

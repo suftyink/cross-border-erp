@@ -1989,6 +1989,12 @@ CREATE TABLE IF NOT EXISTS wms_inbound_order_line (
 
 CREATE INDEX idx_wms_iol_order ON wms_inbound_order_line(tenant_id, order_id);
 
+ALTER TABLE wms_inbound_order ADD COLUMN IF NOT EXISTS operator_id VARCHAR(64);
+ALTER TABLE wms_inbound_order_line ADD COLUMN IF NOT EXISTS purchase_order_line_id VARCHAR(64);
+ALTER TABLE wms_inbound_order_line ADD COLUMN IF NOT EXISTS supplier_batch_no VARCHAR(128);
+ALTER TABLE wms_inbound_order_line ADD COLUMN IF NOT EXISTS receipt_position INT;
+CREATE INDEX IF NOT EXISTS idx_wms_inbound_source ON wms_inbound_order(tenant_id, reference_type, reference_id);
+
 -- 出库单表: 管理出库单据
 CREATE TABLE IF NOT EXISTS wms_outbound_order (
     order_id        VARCHAR(64)  NOT NULL,

@@ -1,5 +1,7 @@
 package com.aidotnet.erp.wms.infrastructure;
 
+import com.aidotnet.erp.common.wms.PurchaseReceiptOperations.ReceiptMovement;
+
 import com.aidotnet.erp.wms.domain.DefectiveReturn;
 import com.aidotnet.erp.wms.domain.DefectiveReturnStatus;
 import com.aidotnet.erp.wms.domain.DefectiveSupplierReply;
@@ -61,6 +63,19 @@ public class WmsOrderStore {
 
     public List<InboundOrder> listInboundOrders(String tenantId, String warehouseId) {
         return mapper.selectInboundOrders(tenantId, warehouseId).stream().map(this::toInboundOrderDomain).collect(Collectors.toList());
+    }
+
+    public List<InboundOrder> listPurchaseReceipts(String tenantId, String purchaseOrderId) {
+        return mapper.selectPurchaseReceipts(tenantId, purchaseOrderId).stream()
+                .map(this::toInboundOrderDomain).toList();
+    }
+
+    public boolean insertPurchaseReceipt(InboundOrder order) {
+        return mapper.insertPurchaseReceipt(toInboundOrderData(order)) == 1;
+    }
+
+    public List<ReceiptMovement> listPurchaseReceiptMovements(String tenantId, String receiptId) {
+        return mapper.selectPurchaseReceiptMovements(tenantId, receiptId);
     }
 
     public void saveInboundOrderLine(InboundOrderLine line) {
@@ -220,6 +235,7 @@ public class WmsOrderStore {
         data.setReferenceId(o.referenceId());
         data.setStatus(o.status().name());
         data.setRemark(o.remark());
+        data.setOperatorId(o.operatorId());
         data.setCreatedAt(o.createdAt() != null ? o.createdAt() : Instant.now());
         data.setUpdatedAt(o.updatedAt() != null ? o.updatedAt() : Instant.now());
         return data;
@@ -227,7 +243,8 @@ public class WmsOrderStore {
 
     private InboundOrder toInboundOrderDomain(InboundOrderDO d) {
         return new InboundOrder(d.getOrderId(), d.getTenantId(), d.getWarehouseId(), d.getReferenceType(),
-                d.getReferenceId(), InboundOrderStatus.valueOf(d.getStatus()), d.getRemark(), d.getCreatedAt(), d.getUpdatedAt());
+                d.getReferenceId(), InboundOrderStatus.valueOf(d.getStatus()), d.getRemark(), d.getCreatedAt(),
+                d.getUpdatedAt(), d.getOperatorId());
     }
 
     private InboundOrderLineDO toInboundOrderLineData(InboundOrderLine l) {
@@ -240,12 +257,16 @@ public class WmsOrderStore {
         data.setReceivedQuantity(l.receivedQuantity());
         data.setUnitCost(l.unitCost());
         data.setBatchNo(l.batchNo());
+        data.setPurchaseOrderLineId(l.purchaseOrderLineId());
+        data.setSupplierBatchNo(l.supplierBatchNo());
+        data.setReceiptPosition(l.receiptPosition());
         return data;
     }
 
     private InboundOrderLine toInboundOrderLineDomain(InboundOrderLineDO d) {
         return new InboundOrderLine(d.getLineId(), d.getOrderId(), d.getSellerSku(), d.getLocationId(),
-                d.getExpectedQuantity(), d.getReceivedQuantity(), d.getUnitCost(), d.getBatchNo());
+                d.getExpectedQuantity(), d.getReceivedQuantity(), d.getUnitCost(), d.getBatchNo(),
+                d.getPurchaseOrderLineId(), d.getSupplierBatchNo(), d.getReceiptPosition());
     }
 
     private OutboundOrderDO toOutboundOrderData(OutboundOrder o) {

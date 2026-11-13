@@ -17,6 +17,9 @@ public class InboundOrderLineDO {
     private int receivedQuantity;
     private BigDecimal unitCost;
     private String batchNo;
+    private String purchaseOrderLineId;
+    private String supplierBatchNo;
+    private Integer receiptPosition;
 
     public InboundOrderLineDO() {}
 
@@ -36,4 +39,10 @@ public class InboundOrderLineDO {
     public void setUnitCost(BigDecimal unitCost) { this.unitCost = unitCost; }
     public String getBatchNo() { return batchNo; }
     public void setBatchNo(String batchNo) { this.batchNo = batchNo; }
+    public String getPurchaseOrderLineId() { return purchaseOrderLineId; }
+    public void setPurchaseOrderLineId(String value) { this.purchaseOrderLineId = value; }
+    public String getSupplierBatchNo() { return supplierBatchNo; }
+    public void setSupplierBatchNo(String value) { this.supplierBatchNo = value; }
+    public Integer getReceiptPosition() { return receiptPosition; }
+    public void setReceiptPosition(Integer value) { this.receiptPosition = value; }
 }

@@ -161,7 +161,8 @@ public class IamService {
             throw new BizException("USER_NOT_FOUND", "用户不存在");
         }
         for (String roleId : roleIds) {
-            iamStore.findRoleById(roleId).orElseThrow(() -> new BizException("ROLE_NOT_FOUND", "角色不存在: " + roleId));
+            iamStore.findRoleById(roleId).filter(role -> tenantId.equals(role.tenantId()))
+                    .orElseThrow(() -> new BizException("ROLE_NOT_FOUND", "角色不存在: " + roleId));
         }
         iamStore.findUserRoles(userId).forEach(ur -> {});
         for (String roleId : roleIds) {
@@ -184,7 +185,8 @@ public class IamService {
 
     public Role updateRolePermissions(String roleId, Set<String> permIds) {
         String tenantId = currentTenant();
-        Role role = iamStore.findRoleById(roleId).orElseThrow(() -> new BizException("ROLE_NOT_FOUND", "角色不存在"));
+        Role role = iamStore.findRoleById(roleId).filter(existing -> tenantId.equals(existing.tenantId()))
+                .orElseThrow(() -> new BizException("ROLE_NOT_FOUND", "角色不存在"));
         Role updated = new Role(role.roleId(), role.tenantId(), role.name(), role.code(), role.type(), role.status(), permIds, role.createdAt(), Instant.now());
         iamStore.saveRole(updated);
         audit(tenantId, "ROLE_UPDATE_PERMISSIONS", "role", role.code(), true);

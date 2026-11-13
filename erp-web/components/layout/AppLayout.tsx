@@ -67,6 +67,7 @@ const menuItems = [
   { key: '/wms', icon: <HomeOutlined />, label: '仓储管理', domain: 'wms',
     children: [
       { key: '/wms/warehouses', label: '仓库管理' },
+      { key: '/wms/operations', label: '仓储作业' },
       { key: '/wms/inventory', label: '库存台账' },
     ],
   },

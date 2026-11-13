@@ -40,8 +40,9 @@ export interface User {
 export interface Role {
   roleId: string;
   tenantId: string;
-  roleName: string;
-  permissions: string[];
+  name: string;
+  code: string;
+  permIds: string[];
 }
 
 export interface Position {
@@ -267,22 +268,51 @@ export interface Supplier {
 export interface PurchaseOrder {
   poId: string;
   tenantId: string;
-  poNo: string;
+  poNumber: string;
   supplierId: string;
   status: string;
   totalAmount: number;
   currency: string;
-  items: PurchaseOrderItem[];
+  lines: PurchaseOrderItem[];
   createdAt: string;
 }
 
 export interface PurchaseOrderItem {
-  itemId: string;
-  skuId: string;
+  lineId: string;
   sellerSku: string;
   quantity: number;
-  unitPrice: number;
-  receivedQty: number;
+  unitCost: number;
+  receivedQuantity: number;
+}
+
+export interface PurchaseReceiptLineInput {
+  lineId: string;
+  quantity: number;
+  supplierBatchNo?: string;
+}
+
+export interface PurchaseReceiptInput {
+  receiptId: string;
+  warehouseId: string;
+  receipts: PurchaseReceiptLineInput[];
+}
+
+export interface PurchaseReceipt {
+  receiptId: string;
+  purchaseOrderId: string;
+  warehouseId: string;
+  operatorId: string;
+  receivedAt: string;
+  lines: { purchaseOrderLineId: string; sellerSku: string; supplierBatchNo?: string; batchNo: string; quantity: number }[];
+}
+
+export interface PurchaseReceiptMovement {
+  batchNo: string;
+  sellerSku: string;
+  quantity: number;
+  toStatus: string;
+  operatorId: string;
+  receivedAt: string;
 }
 
 export interface PurchasePlan {

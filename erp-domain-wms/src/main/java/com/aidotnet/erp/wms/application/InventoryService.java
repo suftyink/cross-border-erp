@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 库存管理应用服务
@@ -106,10 +107,10 @@ public class InventoryService {
         return inventoryStore.listLocations(tenantId, warehouseId);
     }
 
+    @Transactional
     public InventoryBalance receive(String tenantId, StockCommand command) {
         ensureWarehouse(tenantId, command.warehouseId());
-        InventoryBalance current = inventoryStore.findBalance(tenantId, command.warehouseId(), command.sellerSku())
-                .orElse(new InventoryBalance(tenantId, command.warehouseId(), command.sellerSku(), 0, 0, 0, 0, Instant.now()));
+        InventoryBalance current = inventoryStore.lockOrCreateBalance(tenantId, command.warehouseId(), command.sellerSku());
         InventoryBalance updated = inventoryStore.saveBalance(new InventoryBalance(
                 tenantId,
                 command.warehouseId(),
@@ -127,6 +128,7 @@ public class InventoryService {
         return updated;
     }
 
+    @Transactional
     public InventoryBalance reserve(String tenantId, StockCommand command) {
         InventoryBalance current = getBalance(tenantId, command.warehouseId(), command.sellerSku());
         if (current.getAvailable() < command.quantity()) {
@@ -145,6 +147,7 @@ public class InventoryService {
         return updated;
     }
 
+    @Transactional
     public InventoryBalance release(String tenantId, StockCommand command) {
         InventoryBalance current = getBalance(tenantId, command.warehouseId(), command.sellerSku());
         if (current.reserved() < command.quantity()) {
@@ -163,6 +166,7 @@ public class InventoryService {
         return updated;
     }
 
+    @Transactional
     public InventoryBalance deduct(String tenantId, StockCommand command) {
         InventoryBalance current = getBalance(tenantId, command.warehouseId(), command.sellerSku());
         if (current.reserved() < command.quantity()) {
@@ -213,6 +217,7 @@ public class InventoryService {
                 Instant.now()));
     }
 
+    @Transactional
     public StockCheck adjustStock(String tenantId, String checkId) {
         StockCheck check = inventoryStore.findStockCheck(tenantId, checkId)
                 .orElseThrow(() -> new BizException("STOCK_CHECK_NOT_FOUND", "盘点记录不存在"));
@@ -222,8 +227,7 @@ public class InventoryService {
         if (check.sellerSku() == null || check.sellerSku().isBlank()) {
             throw new BizException("STOCK_CHECK_DATA_INVALID", "盘点明细不存在");
         }
-        InventoryBalance balance = inventoryStore.findBalance(tenantId, check.warehouseId(), check.sellerSku())
-                .orElse(new InventoryBalance(tenantId, check.warehouseId(), check.sellerSku(), 0, 0, 0, 0, Instant.now()));
+        InventoryBalance balance = inventoryStore.lockOrCreateBalance(tenantId, check.warehouseId(), check.sellerSku());
         InventoryBalance updated = inventoryStore.saveBalance(new InventoryBalance(
                 tenantId,
                 check.warehouseId(),
@@ -316,7 +320,7 @@ public class InventoryService {
 
     private InventoryBalance getBalance(String tenantId, String warehouseId, String sellerSku) {
         ensureWarehouse(tenantId, warehouseId);
-        return inventoryStore.findBalance(tenantId, warehouseId, sellerSku)
+        return inventoryStore.lockBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new BizException("INVENTORY_NOT_FOUND", "库存不存在"));
     }
 

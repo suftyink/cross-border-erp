@@ -14,7 +14,7 @@ apiClient.interceptors.request.use((config) => {
       config.headers.Authorization = `Bearer ${token}`;
     }
     const tenantId = localStorage.getItem('erp_tenant_id');
-    if (tenantId) {
+    if (tenantId && !config.headers.has('X-Tenant-Id')) {
       config.headers['X-Tenant-Id'] = tenantId;
     }
   }

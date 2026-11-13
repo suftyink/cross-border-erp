@@ -12,8 +12,6 @@ import com.aidotnet.erp.scm.application.PurchaseService.CreatePurchaseOrderComma
 import com.aidotnet.erp.scm.application.PurchaseService.CreateSupplierCommand;
 import com.aidotnet.erp.scm.application.PurchaseService.EvaluateSupplierCommand;
 import com.aidotnet.erp.scm.application.PurchaseService.GenerateSuggestionCommand;
-import com.aidotnet.erp.scm.application.PurchaseService.ReceiptLine;
-import com.aidotnet.erp.scm.application.PurchaseService.ReceiveCommand;
 import com.aidotnet.erp.scm.application.PurchaseService.SupplierContactCommand;
 import com.aidotnet.erp.scm.application.PurchaseService.SupplierQualificationCommand;
 import com.aidotnet.erp.scm.application.PurchaseService.SupplierScoreCommand;
@@ -232,13 +230,6 @@ public class PurchaseController {
         return Result.ok(scmExtService.rejectPurchase(currentTenant(), approvalId, new ApproveCommand(poId, request.comment())));
     }
 
-    @PatchMapping("/purchase-orders/{poId}/receive")
-    public Result<PurchaseOrder> receive(@PathVariable String poId, @Valid @RequestBody ReceiveRequest request) {
-        List<ReceiptLine> receipts = request.receipts().stream()
-                .map(receipt -> new ReceiptLine(receipt.lineId(), receipt.quantity()))
-                .toList();
-        return Result.ok(purchaseService.receive(currentTenant(), poId, new ReceiveCommand(request.warehouseId(), receipts)));
-    }
 
     @PatchMapping("/purchase-orders/{poId}/cancel")
     public Result<PurchaseOrder> cancel(@PathVariable String poId) {
@@ -494,9 +485,6 @@ public class PurchaseController {
 
     public record ApproveFlowRequest(String comment) {}
 
-    public record ReceiveRequest(@NotBlank String warehouseId, @NotEmpty List<@Valid ReceiptLineRequest> receipts) {}
-
-    public record ReceiptLineRequest(@NotBlank String lineId, @Positive int quantity) {}
 
     public record CreatePaymentRequestFromPoRequest(
             String requestId,

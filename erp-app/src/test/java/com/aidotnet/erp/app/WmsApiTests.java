@@ -106,7 +106,7 @@ class WmsApiTests {
                         .content("""
                                 {
                                   "warehouseId":"%s",
-                                  "referenceType":"PURCHASE_ORDER",
+                                  "referenceType":"MANUAL_INBOUND",
                                   "referenceId":"PO-IN-1001",
                                   "remark":"采购收货入库",
                                   "lines":[
@@ -697,7 +697,7 @@ class WmsApiTests {
                         .content("""
                                 {
                                   "warehouseId":"%s",
-                                  "referenceType":"PURCHASE_ORDER",
+                                  "referenceType":"MANUAL_INBOUND",
                                   "referenceId":"PO-DEF-1001",
                                   "remark":"defective return inbound",
                                   "lines":[
@@ -846,7 +846,7 @@ class WmsApiTests {
                         .content("""
                                 {
                                   "warehouseId":"%s",
-                                  "referenceType":"PURCHASE_ORDER",
+                                  "referenceType":"MANUAL_INBOUND",
                                   "referenceId":"PO-RPR-1001",
                                   "remark":"repair inbound",
                                   "lines":[

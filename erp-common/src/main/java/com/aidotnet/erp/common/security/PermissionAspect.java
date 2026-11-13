@@ -6,6 +6,7 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.security.access.AccessDeniedException;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
@@ -72,6 +73,10 @@ public class PermissionAspect {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) {
             throw new BizException("UNAUTHORIZED", "请先登录");
+        }
+        if (auth.getDetails() instanceof ErpUserDetails user
+                && !user.tenantId().equals(TenantContext.getTenantId())) {
+            throw new AccessDeniedException("登录账号与当前租户不一致");
         }
         boolean hasPermission = auth.getAuthorities().stream()
                 .anyMatch(granted -> granted.getAuthority().equals("ROLE_" + permission)

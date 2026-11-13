@@ -1,5 +1,7 @@
 package com.aidotnet.erp.wms.infrastructure.mapper;
 
+import com.aidotnet.erp.common.wms.PurchaseReceiptOperations.ReceiptMovement;
+
 import com.aidotnet.erp.wms.infrastructure.data.DefectiveReturnDO;
 import com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO;
 import com.aidotnet.erp.wms.infrastructure.data.InboundOrderLineDO;
@@ -20,7 +22,12 @@ public interface WmsOrderMapper {
     void insertInboundOrder(InboundOrderDO order);
     void updateInboundOrder(InboundOrderDO order);
     InboundOrderDO selectInboundOrder(@Param("tenantId") String tenantId, @Param("orderId") String orderId);
+    int insertPurchaseReceipt(InboundOrderDO order);
     List<InboundOrderDO> selectInboundOrders(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId);
+    List<InboundOrderDO> selectPurchaseReceipts(@Param("tenantId") String tenantId,
+                                               @Param("purchaseOrderId") String purchaseOrderId);
+    List<ReceiptMovement> selectPurchaseReceiptMovements(@Param("tenantId") String tenantId,
+                                                         @Param("receiptId") String receiptId);
 
     void insertInboundOrderLine(InboundOrderLineDO line);
     void updateInboundOrderLine(InboundOrderLineDO line);

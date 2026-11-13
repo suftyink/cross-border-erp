@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 
 import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.scm.client.FmsClient;
-import com.aidotnet.erp.scm.client.WmsClient;
 import com.aidotnet.erp.scm.domain.PurchaseOrderLine;
 import com.aidotnet.erp.scm.domain.Supplier;
 import com.aidotnet.erp.scm.domain.SupplierEvaluation;
@@ -34,7 +33,6 @@ class PurchaseServiceTest {
     private PurchaseStore purchaseStore;
     private ScmExtStore scmExtStore;
     private FmsClient fmsClient;
-    private WmsClient wmsClient;
     private PurchaseTrackingService purchaseTrackingService;
     private PurchaseService purchaseService;
 
@@ -43,10 +41,9 @@ class PurchaseServiceTest {
         purchaseStore = mock(PurchaseStore.class);
         scmExtStore = mock(ScmExtStore.class);
         fmsClient = mock(FmsClient.class);
-        wmsClient = mock(WmsClient.class);
         purchaseTrackingService = mock(PurchaseTrackingService.class);
         purchaseService = new PurchaseService(
-                purchaseStore, scmExtStore, fmsClient, wmsClient, purchaseTrackingService);
+                purchaseStore, scmExtStore, fmsClient, purchaseTrackingService);
     }
 
     @Test
@@ -132,7 +129,7 @@ class PurchaseServiceTest {
                                         Instant.parse("2026-05-20T00:00:00Z"))))));
 
         assertEquals("SUPPLIER_DISABLED", ex.getCode());
-        verifyNoInteractions(fmsClient, wmsClient);
+        verifyNoInteractions(fmsClient);
     }
 
     @Test

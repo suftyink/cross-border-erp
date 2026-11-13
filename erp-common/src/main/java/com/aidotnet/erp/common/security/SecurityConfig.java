@@ -1,6 +1,7 @@
 package com.aidotnet.erp.common.security;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -17,11 +18,13 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final TenantContextFilter tenantContextFilter;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final boolean permitAllRequests;
 
-    public SecurityConfig(TenantContextFilter tenantContextFilter,
+    public SecurityConfig(TenantContextFilter tenantContextFilter, JwtAuthenticationFilter jwtAuthenticationFilter,
                           @Value("${erp.security.permit-all:false}") boolean permitAllRequests) {
         this.tenantContextFilter = tenantContextFilter;
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.permitAllRequests = permitAllRequests;
     }
 
@@ -41,9 +44,17 @@ public class SecurityConfig {
                         auth.anyRequest().authenticated();
                     }
                 })
-                .addFilterBefore(tenantContextFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(tenantContextFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterRegistration(JwtAuthenticationFilter filter) {
+        FilterRegistrationBean<JwtAuthenticationFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean

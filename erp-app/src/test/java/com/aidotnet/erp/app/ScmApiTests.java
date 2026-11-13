@@ -7,7 +7,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aidotnet.erp.common.security.JwtProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Set;
 import java.util.UUID;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
@@ -26,10 +28,15 @@ class ScmApiTests {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private JwtProvider jwtProvider;
+
     @Test
     void manageSupplierPurchaseOrderApprovalReceiptAndTenantIsolation() throws Exception {
         String tenantId = uniqueTenant("scm-flow");
         String otherTenantId = uniqueTenant("scm-flow-other");
+        String warehouseAuthorization = "Bearer " + jwtProvider.createToken(
+                tenantId, "warehouse-worker", "worker", Set.of("wms:receipt:write"));
         String warehouseResponse = mockMvc.perform(post("/wms/api/in/v1/warehouses")
                         .header("X-Tenant-Id", tenantId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -94,7 +101,7 @@ class ScmApiTests {
         String poResponse = mockMvc.perform(post("/scm/api/in/v1/purchase-orders")
                         .header("X-Tenant-Id", tenantId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"supplierId\":\"" + supplierId + "\",\"currency\":\"USD\",\"lines\":[{\"lineId\":\"L1\",\"sellerSku\":\"SPK-BLK-US\",\"quantity\":10,\"unitCost\":12.50}]}"))
+                        .content("{\"supplierId\":\"" + supplierId + "\",\"currency\":\"USD\",\"purchaseType\":\"MARKET\",\"lines\":[{\"lineId\":\"L1\",\"sellerSku\":\"SPK-BLK-US\",\"quantity\":10,\"unitCost\":12.50}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.totalAmount").value(125.0))
@@ -118,9 +125,10 @@ class ScmApiTests {
 
         mockMvc.perform(patch("/scm/api/in/v1/purchase-orders/" + poId + "/receive")
                         .header("X-Tenant-Id", tenantId)
+                        .header("Authorization", warehouseAuthorization)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{" +
-                                "\"warehouseId\":\"" + warehouseId + "\"," +
+                                "\"receiptId\":\"" + UUID.randomUUID() + "\",\"warehouseId\":\"" + warehouseId + "\"," +
                                 "\"receipts\":[{\"lineId\":\"L1\",\"quantity\":4}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PARTIALLY_RECEIVED"));
@@ -131,7 +139,9 @@ class ScmApiTests {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].sellerSku").value("SPK-BLK-US"))
                 .andExpect(jsonPath("$.data[0].onHand").value(4))
-                .andExpect(jsonPath("$.data[0].reserved").value(0));
+                .andExpect(jsonPath("$.data[0].reserved").value(0))
+                .andExpect(jsonPath("$.data[0].frozen").value(4))
+                .andExpect(jsonPath("$.data[0].available").value(0));
 
         mockMvc.perform(get("/wms/api/in/v1/warehouses/" + warehouseId + "/inventory-transactions")
                         .header("X-Tenant-Id", tenantId)
@@ -140,7 +150,7 @@ class ScmApiTests {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].transactionType").value("RECEIVE"))
                 .andExpect(jsonPath("$.data[0].quantity").value(4))
-                .andExpect(jsonPath("$.data[0].referenceType").value("MANUAL_RECEIVE"));
+                .andExpect(jsonPath("$.data[0].referenceType").value("PURCHASE_RECEIPT"));
 
         mockMvc.perform(get("/fms/api/in/v1/cost-events/by-source")
                         .header("X-Tenant-Id", tenantId)
@@ -154,18 +164,20 @@ class ScmApiTests {
 
         mockMvc.perform(patch("/scm/api/in/v1/purchase-orders/" + poId + "/receive")
                         .header("X-Tenant-Id", tenantId)
+                        .header("Authorization", warehouseAuthorization)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{" +
-                                "\"warehouseId\":\"" + warehouseId + "\"," +
+                                "\"receiptId\":\"" + UUID.randomUUID() + "\",\"warehouseId\":\"" + warehouseId + "\"," +
                                 "\"receipts\":[{\"lineId\":\"L1\",\"quantity\":7}]}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("PO_RECEIVE_EXCEEDS_ORDERED"));
 
         mockMvc.perform(patch("/scm/api/in/v1/purchase-orders/" + poId + "/receive")
                         .header("X-Tenant-Id", tenantId)
+                        .header("Authorization", warehouseAuthorization)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{" +
-                                "\"warehouseId\":\"" + warehouseId + "\"," +
+                                "\"receiptId\":\"" + UUID.randomUUID() + "\",\"warehouseId\":\"" + warehouseId + "\"," +
                                 "\"receipts\":[{\"lineId\":\"L1\",\"quantity\":6}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("RECEIVED"));
@@ -174,7 +186,9 @@ class ScmApiTests {
                         .header("X-Tenant-Id", tenantId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].onHand").value(10))
-                .andExpect(jsonPath("$.data[0].reserved").value(0));
+                .andExpect(jsonPath("$.data[0].reserved").value(0))
+                .andExpect(jsonPath("$.data[0].frozen").value(10))
+                .andExpect(jsonPath("$.data[0].available").value(0));
 
         mockMvc.perform(get("/wms/api/in/v1/warehouses/" + warehouseId + "/inventory-transactions")
                         .header("X-Tenant-Id", tenantId)

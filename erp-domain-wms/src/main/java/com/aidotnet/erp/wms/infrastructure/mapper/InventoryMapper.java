@@ -30,6 +30,14 @@ public interface InventoryMapper {
     /** 按租户ID+仓库ID查询 */
     WarehouseDO selectWarehouse(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId);
 
+    String lockWarehouse(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId);
+
+    void ensureBalance(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
+                       @Param("sellerSku") String sellerSku);
+
+    InventoryBalanceDO lockBalance(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
+                                   @Param("sellerSku") String sellerSku);
+
     /** 按租户ID查询仓库列表 */
     List<WarehouseDO> selectWarehouses(@Param("tenantId") String tenantId);
 

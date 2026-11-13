@@ -26,6 +26,8 @@ public interface PurchaseMapper {
     /** 按租户ID+采购单ID查询 */
     PurchaseOrderDO selectOrder(@Param("tenantId") String tenantId, @Param("poId") String poId);
 
+    PurchaseOrderDO lockOrder(@Param("tenantId") String tenantId, @Param("poId") String poId);
+
     /** 按租户ID查询采购单列表 */
     List<PurchaseOrderDO> selectOrders(@Param("tenantId") String tenantId);
 

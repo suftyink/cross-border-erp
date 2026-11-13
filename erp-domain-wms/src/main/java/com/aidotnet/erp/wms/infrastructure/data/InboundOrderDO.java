@@ -16,6 +16,7 @@ public class InboundOrderDO {
     private String referenceId;
     private String status;
     private String remark;
+    private String operatorId;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -35,6 +36,8 @@ public class InboundOrderDO {
     public void setStatus(String status) { this.status = status; }
     public String getRemark() { return remark; }
     public void setRemark(String remark) { this.remark = remark; }
+    public String getOperatorId() { return operatorId; }
+    public void setOperatorId(String operatorId) { this.operatorId = operatorId; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

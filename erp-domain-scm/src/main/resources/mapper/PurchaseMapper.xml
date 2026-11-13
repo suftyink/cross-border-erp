@@ -31,6 +31,12 @@
         WHERE po_id = #{poId} AND tenant_id = #{tenantId}
     </select>
 
+    <select id="lockOrder" resultType="com.aidotnet.erp.scm.infrastructure.data.PurchaseOrderDO">
+        SELECT * FROM scm_purchase_order
+        WHERE po_id = #{poId} AND tenant_id = #{tenantId}
+        FOR UPDATE
+    </select>
+
     <select id="selectOrders" resultType="com.aidotnet.erp.scm.infrastructure.data.PurchaseOrderDO">
         SELECT po_id, tenant_id, supplier_id, po_number, currency, total_amount, status,
                payment_terms, shipping_terms, purchase_type, expected_delivery_date, actual_delivery_date,

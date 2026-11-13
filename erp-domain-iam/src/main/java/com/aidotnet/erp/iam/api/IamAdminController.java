@@ -1,5 +1,7 @@
 package com.aidotnet.erp.iam.api;
 
+import com.aidotnet.erp.common.security.RequirePermission;
+
 import com.aidotnet.erp.common.api.Result;
 import com.aidotnet.erp.common.security.DataScope;
 import com.aidotnet.erp.iam.application.DataScopeService;
@@ -102,6 +104,7 @@ public class IamAdminController {
     }
 
     @PostMapping("/users/{userId}/roles")
+    @RequirePermission("iam:user:write")
     public Result<Void> assignRoles(@PathVariable String userId, @Valid @RequestBody AssignRolesRequest request) {
         iamService.assignRoles(userId, request.roleIds(), request.orgId());
         return Result.ok();
@@ -113,11 +116,13 @@ public class IamAdminController {
     }
 
     @PostMapping("/roles")
+    @RequirePermission("iam:role:write")
     public Result<Role> createRole(@Valid @RequestBody RoleRequest request) {
         return Result.ok(iamService.createRole(request.name(), request.code(), request.type(), request.permIds()));
     }
 
     @PutMapping("/roles/{roleId}/permissions")
+    @RequirePermission("iam:role:write")
     public Result<Role> updateRolePermissions(@PathVariable String roleId, @Valid @RequestBody UpdatePermissionsRequest request) {
         return Result.ok(iamService.updateRolePermissions(roleId, request.permIds()));
     }

@@ -3,8 +3,8 @@
 <mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.WmsOrderMapper">
 
     <insert id="insertInboundOrder" parameterType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO">
-        INSERT INTO wms_inbound_order (order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at)
-        VALUES (#{orderId}, #{tenantId}, #{warehouseId}, #{referenceType}, #{referenceId}, #{status}, #{remark}, #{createdAt}, #{updatedAt})
+        INSERT INTO wms_inbound_order (order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at, operator_id)
+        VALUES (#{orderId}, #{tenantId}, #{warehouseId}, #{referenceType}, #{referenceId}, #{status}, #{remark}, #{createdAt}, #{updatedAt}, #{operatorId})
     </insert>
 
     <update id="updateInboundOrder" parameterType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO">
@@ -12,20 +12,49 @@
         WHERE order_id = #{orderId} AND tenant_id = #{tenantId}
     </update>
 
+    <insert id="insertPurchaseReceipt" parameterType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO">
+        INSERT INTO wms_inbound_order (order_id, tenant_id, warehouse_id, reference_type, reference_id, status,
+                                       created_at, updated_at, operator_id)
+        VALUES (#{orderId}, #{tenantId}, #{warehouseId}, #{referenceType}, #{referenceId}, #{status},
+                #{createdAt}, #{updatedAt}, #{operatorId})
+        ON CONFLICT (order_id) DO NOTHING
+    </insert>
+
     <select id="selectInboundOrder" resultType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO">
-        SELECT order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at
+        SELECT order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at, operator_id
         FROM wms_inbound_order WHERE tenant_id = #{tenantId} AND order_id = #{orderId}
     </select>
 
     <select id="selectInboundOrders" resultType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO">
-        SELECT order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at
+        SELECT order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at, operator_id
         FROM wms_inbound_order WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId}
         ORDER BY created_at DESC
     </select>
 
+    <select id="selectPurchaseReceipts" resultType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO">
+        SELECT order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at, operator_id
+        FROM wms_inbound_order
+        WHERE tenant_id = #{tenantId} AND reference_type = 'PURCHASE_RECEIPT'
+        <if test="purchaseOrderId != null">AND reference_id = #{purchaseOrderId}</if>
+        ORDER BY created_at DESC, order_id
+    </select>
+
+    <select id="selectPurchaseReceiptMovements" resultType="com.aidotnet.erp.common.wms.PurchaseReceiptOperations$ReceiptMovement">
+        SELECT o.order_id, o.reference_id, o.warehouse_id, l.purchase_order_line_id, m.seller_sku,
+               l.batch_no, m.quantity, 'PENDING_INSPECTION', o.operator_id, m.moved_at
+        FROM wms_inventory_movement m
+        JOIN wms_inbound_order o ON o.order_id = m.reference_id AND o.tenant_id = m.tenant_id
+        JOIN wms_inbound_order_line l ON l.line_id = m.movement_id AND l.order_id = o.order_id
+        WHERE m.tenant_id = #{tenantId} AND o.order_id = #{receiptId}
+          AND m.reference_type = 'PURCHASE_RECEIPT' AND m.type = 'RECEIVING'
+        ORDER BY l.receipt_position
+    </select>
+
     <insert id="insertInboundOrderLine" parameterType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderLineDO">
-        INSERT INTO wms_inbound_order_line (line_id, order_id, seller_sku, location_id, expected_quantity, received_quantity, unit_cost, batch_no)
-        VALUES (#{lineId}, #{orderId}, #{sellerSku}, #{locationId}, #{expectedQuantity}, #{receivedQuantity}, #{unitCost}, #{batchNo})
+        INSERT INTO wms_inbound_order_line (line_id, order_id, seller_sku, location_id, expected_quantity, received_quantity, unit_cost, batch_no,
+                                            purchase_order_line_id, supplier_batch_no, receipt_position)
+        VALUES (#{lineId}, #{orderId}, #{sellerSku}, #{locationId}, #{expectedQuantity}, #{receivedQuantity}, #{unitCost}, #{batchNo},
+                #{purchaseOrderLineId}, #{supplierBatchNo}, #{receiptPosition})
     </insert>
 
     <update id="updateInboundOrderLine" parameterType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderLineDO">
@@ -34,8 +63,10 @@
     </update>
 
     <select id="selectInboundOrderLines" resultType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderLineDO">
-        SELECT line_id, order_id, seller_sku, location_id, expected_quantity, received_quantity, unit_cost, batch_no
+        SELECT line_id, order_id, seller_sku, location_id, expected_quantity, received_quantity, unit_cost, batch_no,
+               purchase_order_line_id, supplier_batch_no, receipt_position
         FROM wms_inbound_order_line WHERE order_id = #{orderId}
+        ORDER BY receipt_position, line_id
     </select>
 
     <insert id="insertOutboundOrder" parameterType="com.aidotnet.erp.wms.infrastructure.data.OutboundOrderDO">

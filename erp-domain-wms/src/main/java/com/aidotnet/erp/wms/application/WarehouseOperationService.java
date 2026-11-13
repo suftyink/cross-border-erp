@@ -49,6 +49,7 @@ public class WarehouseOperationService {
 
     @Transactional
     public InboundOrder createInboundOrder(String tenantId, CreateInboundOrderCommand command) {
+        requireStandaloneInbound(command.referenceType());
         ensureWarehouse(tenantId, command.warehouseId());
         Instant now = Instant.now();
         InboundOrder order = new InboundOrder(
@@ -80,6 +81,7 @@ public class WarehouseOperationService {
     @Transactional
     public InboundOrder receiveInboundOrder(String tenantId, String orderId, ReceiveInboundCommand command) {
         InboundOrder order = getInboundOrder(tenantId, orderId);
+        requireStandaloneInbound(order.referenceType());
         if (order.status() != InboundOrderStatus.PENDING && order.status() != InboundOrderStatus.RECEIVING) {
             throw new BizException("INBOUND_STATUS_INVALID", "inbound order status does not allow receipt");
         }
@@ -146,6 +148,13 @@ public class WarehouseOperationService {
                 order.remark(),
                 order.createdAt(),
                 Instant.now()));
+    }
+
+    private void requireStandaloneInbound(String referenceType) {
+        if (PurchaseReceiptService.REFERENCE_TYPE.equalsIgnoreCase(referenceType)
+                || "PURCHASE_ORDER".equalsIgnoreCase(referenceType)) {
+            throw new BizException("PURCHASE_RECEIPT_REQUIRED", "请使用采购收货入口");
+        }
     }
 
     public List<InboundOrder> listInboundOrders(String tenantId, String warehouseId) {

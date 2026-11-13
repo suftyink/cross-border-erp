@@ -2,7 +2,6 @@ package com.aidotnet.erp.scm.application;
 
 import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.scm.client.FmsClient;
-import com.aidotnet.erp.scm.client.WmsClient;
 import com.aidotnet.erp.scm.domain.PurchaseOrder;
 import com.aidotnet.erp.scm.domain.PurchaseOrderLine;
 import com.aidotnet.erp.scm.domain.PurchaseOrderStatus;
@@ -25,6 +24,8 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 
 /**
@@ -47,7 +48,7 @@ import org.springframework.stereotype.Service;
  *   2. 采购单状态流转: DRAFT -> SUBMITTED -> APPROVED -> PARTIALLY_RECEIVED/RECEIVED
  *   3. 收货数量不可超过采购数量
  *   4. 收货后自动记录产品成本事件到FMS
- *   5. 收货后自动入库到WMS
+ *   5. 采购实收随仓储收货确认更新
  *   6. 安全库存 = 日均销量 × 交期天数 × 0.5
  *   7. 再订货点 = 日均销量 × 交期天数 + 安全库存
  * </p>
@@ -65,19 +66,16 @@ public class PurchaseService {
     private final PurchaseStore purchaseStore;
     private final ScmExtStore scmExtStore;
     private final FmsClient fmsClient;
-    private final WmsClient wmsClient;
     private final PurchaseTrackingService purchaseTrackingService;
 
     public PurchaseService(
             PurchaseStore purchaseStore,
             ScmExtStore scmExtStore,
             FmsClient fmsClient,
-            WmsClient wmsClient,
             PurchaseTrackingService purchaseTrackingService) {
         this.purchaseStore = purchaseStore;
         this.scmExtStore = scmExtStore;
         this.fmsClient = fmsClient;
-        this.wmsClient = wmsClient;
         this.purchaseTrackingService = purchaseTrackingService;
     }
 
@@ -229,17 +227,13 @@ public class PurchaseService {
         return update(po, PurchaseOrderStatus.APPROVED, po.lines());
     }
 
-    public PurchaseOrder receive(String tenantId, String poId, ReceiveCommand command) {
-        PurchaseOrder po = getPurchaseOrder(tenantId, poId);
-        if (po.status() != PurchaseOrderStatus.APPROVED && po.status() != PurchaseOrderStatus.PARTIALLY_RECEIVED) {
-            throw new BizException("PO_STATUS_INVALID", "只有已审批采购单可以收货");
-        }
+    PurchaseOrder recordWarehouseReceipt(PurchaseOrder po, List<ReceiptLine> receipts) {
         List<PurchaseOrderLine> lines = po.lines().stream().map(line -> {
-            int received = command.receipts().stream()
+            long received = receipts.stream()
                     .filter(receipt -> receipt.lineId().equals(line.lineId()))
-                    .mapToInt(ReceiptLine::quantity)
+                    .mapToLong(ReceiptLine::quantity)
                     .sum();
-            int totalReceived = line.receivedQuantity() + received;
+            long totalReceived = line.receivedQuantity() + received;
             if (totalReceived > line.quantity()) {
                 throw new BizException("PO_RECEIVE_EXCEEDS_ORDERED", "收货数量超过采购数量");
             }
@@ -248,7 +242,7 @@ public class PurchaseService {
                     line.productId(),
                     line.sellerSku(),
                     line.quantity(),
-                    totalReceived,
+                    (int) totalReceived,
                     line.unitCost(),
                     line.totalPrice(),
                     line.expectedDate());
@@ -258,9 +252,13 @@ public class PurchaseService {
                 po,
                 allReceived ? PurchaseOrderStatus.RECEIVED : PurchaseOrderStatus.PARTIALLY_RECEIVED,
                 lines);
-        syncPurchaseTrackingAfterReceive(tenantId, po, command.receipts());
-        recordProductCostsAfterReceive(po, command.receipts());
-        receiveInventoryAfterPurchase(po, command);
+        syncPurchaseTrackingAfterReceive(po.tenantId(), po, receipts);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                recordProductCostsAfterReceive(po, receipts);
+            }
+        });
         return updated;
     }
 
@@ -400,32 +398,6 @@ public class PurchaseService {
                 && po.status() != PurchaseOrderStatus.PARTIALLY_RECEIVED
                 && po.status() != PurchaseOrderStatus.RECEIVED) {
             throw new BizException("PO_STATUS_INVALID", "采购单当前状态不可发起付款申请");
-        }
-    }
-
-    private void receiveInventoryAfterPurchase(PurchaseOrder po, ReceiveCommand command) {
-        if (command.warehouseId() == null || command.warehouseId().isBlank()) {
-            return;
-        }
-        // 采购收货后同步 WMS 库存口径，后续再由 WMS 入库/质检流程细化待检与异常库存流向。
-        for (ReceiptLine receipt : command.receipts()) {
-            po.lines().stream()
-                    .filter(line -> line.lineId().equals(receipt.lineId()))
-                    .findFirst()
-                    .ifPresent(line -> receiveInventory(po, command.warehouseId(), line, receipt.quantity()));
-        }
-    }
-
-    private void receiveInventory(PurchaseOrder po, String warehouseId, PurchaseOrderLine line, int receivedQuantity) {
-        try {
-            wmsClient.receive(new WmsClient.StockRequest(warehouseId, line.sellerSku(), receivedQuantity));
-        } catch (Exception ex) {
-            log.warn(
-                    "Receive inventory after purchase failed. poId={}, warehouseId={}, sellerSku={}",
-                    po.poId(),
-                    warehouseId,
-                    line.sellerSku(),
-                    ex);
         }
     }
 
@@ -697,8 +669,6 @@ public class PurchaseService {
 
     public record CreatePaymentRequestFromPoCommand(
             String requestId, BigDecimal amount, String requestedBy, JsonNode approvalFlow) {}
-
-    public record ReceiveCommand(String warehouseId, List<ReceiptLine> receipts) {}
 
     public record ReceiptLine(String lineId, int quantity) {}
 

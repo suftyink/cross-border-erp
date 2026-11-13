@@ -58,6 +58,26 @@ public class InventoryStore {
                 .map(this::toWarehouseDomain);
     }
 
+    public void lockReceivingWarehouse(String tenantId, String warehouseId) {
+        if (inventoryMapper.lockWarehouse(tenantId, warehouseId) == null) {
+            throw new com.aidotnet.erp.common.exception.BizException("WAREHOUSE_NOT_FOUND", "仓库不存在");
+        }
+    }
+
+    public void receivePendingInspection(String tenantId, String warehouseId, String sku, int quantity,
+                                         String receiptId, Instant receivedAt) {
+        InventoryBalance before = lockOrCreateBalance(tenantId, warehouseId, sku);
+        InventoryBalance after = new InventoryBalance(tenantId, warehouseId, sku,
+                Math.addExact(before.onHand(), quantity), before.reserved(), before.inTransit(),
+                Math.addExact(before.frozen(), quantity), receivedAt);
+        InventoryBalanceDO data = toBalanceData(after);
+        data.setUpdatedAt(receivedAt);
+        inventoryMapper.updateBalance(data);
+        saveTransaction(new InventoryTransaction(java.util.UUID.randomUUID().toString(), tenantId, warehouseId, sku,
+                InventoryTransaction.TransactionType.RECEIVE, quantity, before.onHand(), before.reserved(),
+                after.onHand(), after.reserved(), "PURCHASE_RECEIPT", receiptId, "采购收货转待检", receivedAt));
+    }
+
     public List<Warehouse> listWarehouses(String tenantId) {
         return inventoryMapper.selectWarehouses(tenantId).stream()
                 .map(this::toWarehouseDomain).collect(Collectors.toList());
@@ -79,6 +99,16 @@ public class InventoryStore {
     public Optional<InventoryBalance> findBalance(String tenantId, String warehouseId, String sellerSku) {
         return Optional.ofNullable(inventoryMapper.selectBalance(tenantId, warehouseId, sellerSku))
                 .map(this::toBalanceDomain);
+    }
+
+    public Optional<InventoryBalance> lockBalance(String tenantId, String warehouseId, String sellerSku) {
+        return Optional.ofNullable(inventoryMapper.lockBalance(tenantId, warehouseId, sellerSku))
+                .map(this::toBalanceDomain);
+    }
+
+    public InventoryBalance lockOrCreateBalance(String tenantId, String warehouseId, String sellerSku) {
+        inventoryMapper.ensureBalance(tenantId, warehouseId, sellerSku);
+        return lockBalance(tenantId, warehouseId, sellerSku).orElseThrow();
     }
 
     public List<InventoryBalance> listBalances(String tenantId, String warehouseId) {
@@ -168,8 +198,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void addInventory(String tenantId, String sellerSku, String warehouseId, java.math.BigDecimal quantity,
                              String referenceType, String referenceId, String remark, InventoryTransactionType type) {
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
-                .orElse(new InventoryBalance(tenantId, warehouseId, sellerSku, 0, 0, 0, 0, Instant.now()));
+        InventoryBalance balance = lockOrCreateBalance(tenantId, warehouseId, sellerSku);
         int beforeOnHand = balance.onHand();
         int afterOnHand = beforeOnHand + quantity.intValue();
         saveBalance(new InventoryBalance(tenantId, warehouseId, sellerSku, afterOnHand, balance.reserved(),
@@ -184,7 +213,7 @@ public class InventoryStore {
     public void deductInventory(String sellerSku, String warehouseId, java.math.BigDecimal quantity,
                                 String referenceId, InventoryTransactionType type) {
         String tenantId = com.aidotnet.erp.common.tenant.TenantContext.getTenantId();
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INSUFFICIENT_INVENTORY", "库存不足: " + sellerSku));
         if (balance.getAvailable() < quantity.intValue()) {
             throw new com.aidotnet.erp.common.exception.BizException("INSUFFICIENT_INVENTORY", "可用库存不足: " + sellerSku);
@@ -202,7 +231,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void deductReservedInventory(String tenantId, String sellerSku, String warehouseId, int quantity,
                                         String referenceType, String referenceId, String remark) {
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INVENTORY_NOT_FOUND", "inventory not found: " + sellerSku));
         if (balance.reserved() < quantity) {
             throw new com.aidotnet.erp.common.exception.BizException(
@@ -223,7 +252,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void reserveInventory(String sellerSku, String warehouseId, int quantity, String referenceId) {
         String tenantId = com.aidotnet.erp.common.tenant.TenantContext.getTenantId();
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INSUFFICIENT_INVENTORY", "库存不存在: " + sellerSku));
         if (balance.getAvailable() < quantity) {
             throw new com.aidotnet.erp.common.exception.BizException("INSUFFICIENT_INVENTORY", "可用库存不足，无法预占: " + sellerSku);
@@ -241,7 +270,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void releaseInventory(String sellerSku, String warehouseId, int quantity, String referenceId) {
         String tenantId = com.aidotnet.erp.common.tenant.TenantContext.getTenantId();
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INSUFFICIENT_INVENTORY", "库存不存在: " + sellerSku));
         int beforeReserved = balance.reserved();
         int afterReserved = Math.max(0, beforeReserved - quantity);
@@ -256,7 +285,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void freezeInventory(String sellerSku, String warehouseId, int quantity, String referenceId) {
         String tenantId = com.aidotnet.erp.common.tenant.TenantContext.getTenantId();
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INSUFFICIENT_INVENTORY", "库存不存在: " + sellerSku));
         int beforeFrozen = balance.frozen();
         int afterFrozen = beforeFrozen + quantity;
@@ -271,7 +300,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void unfreezeInventory(String sellerSku, String warehouseId, int quantity, String referenceId) {
         String tenantId = com.aidotnet.erp.common.tenant.TenantContext.getTenantId();
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INSUFFICIENT_INVENTORY", "库存不存在: " + sellerSku));
         int beforeFrozen = balance.frozen();
         int afterFrozen = Math.max(0, beforeFrozen - quantity);
@@ -286,8 +315,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void addInTransit(String sellerSku, String warehouseId, int quantity, String referenceId) {
         String tenantId = com.aidotnet.erp.common.tenant.TenantContext.getTenantId();
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
-                .orElse(new InventoryBalance(tenantId, warehouseId, sellerSku, 0, 0, 0, 0, Instant.now()));
+        InventoryBalance balance = lockOrCreateBalance(tenantId, warehouseId, sellerSku);
         int beforeInTransit = balance.inTransit();
         int afterInTransit = beforeInTransit + quantity;
         saveBalance(new InventoryBalance(tenantId, warehouseId, sellerSku, balance.onHand(), balance.reserved(),
@@ -301,8 +329,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void addInTransitInventory(String tenantId, String sellerSku, String warehouseId, int quantity,
                                       String referenceType, String referenceId, String remark) {
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
-                .orElse(new InventoryBalance(tenantId, warehouseId, sellerSku, 0, 0, 0, 0, Instant.now()));
+        InventoryBalance balance = lockOrCreateBalance(tenantId, warehouseId, sellerSku);
         int afterInTransit = balance.inTransit() + quantity;
         saveBalance(new InventoryBalance(tenantId, warehouseId, sellerSku, balance.onHand(), balance.reserved(),
                 afterInTransit, balance.frozen(), Instant.now()));
@@ -315,7 +342,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void receiveInTransitInventory(String tenantId, String sellerSku, String warehouseId, int quantity,
                                           String referenceType, String referenceId, String remark) {
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INVENTORY_NOT_FOUND", "inventory not found: " + sellerSku));
         if (balance.inTransit() < quantity) {
             throw new com.aidotnet.erp.common.exception.BizException(
@@ -334,7 +361,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void freezeInventory(String tenantId, String sellerSku, String warehouseId, int quantity,
                                 String referenceType, String referenceId, String remark) {
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INSUFFICIENT_INVENTORY", "inventory not found: " + sellerSku));
         if (balance.getAvailable() < quantity) {
             throw new com.aidotnet.erp.common.exception.BizException(
@@ -353,7 +380,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void unfreezeInventory(String tenantId, String sellerSku, String warehouseId, int quantity,
                                   String referenceType, String referenceId, String remark) {
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INSUFFICIENT_INVENTORY", "inventory not found: " + sellerSku));
         if (balance.frozen() < quantity) {
             throw new com.aidotnet.erp.common.exception.BizException(
@@ -372,7 +399,7 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void consumeFrozenInventory(String tenantId, String sellerSku, String warehouseId, int quantity,
                                        String referenceType, String referenceId, String remark) {
-        InventoryBalance balance = findBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INVENTORY_NOT_FOUND", "inventory not found: " + sellerSku));
         if (balance.frozen() < quantity) {
             throw new com.aidotnet.erp.common.exception.BizException(

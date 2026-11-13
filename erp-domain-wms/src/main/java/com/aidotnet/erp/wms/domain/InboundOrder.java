@@ -12,4 +12,10 @@ import java.time.Instant;
  */
 public record InboundOrder(String orderId, String tenantId, String warehouseId, String referenceType,
                            String referenceId, InboundOrderStatus status, String remark,
-                           Instant createdAt, Instant updatedAt) {}
+                           Instant createdAt, Instant updatedAt, String operatorId) {
+    public InboundOrder(String orderId, String tenantId, String warehouseId, String referenceType,
+                        String referenceId, InboundOrderStatus status, String remark,
+                        Instant createdAt, Instant updatedAt) {
+        this(orderId, tenantId, warehouseId, referenceType, referenceId, status, remark, createdAt, updatedAt, null);
+    }
+}

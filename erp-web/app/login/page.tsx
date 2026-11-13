@@ -17,8 +17,8 @@ export default function LoginPage() {
   const onFinish = async (values: { username: string; password: string; tenantId: string }) => {
     setLoading(true);
     try {
-      const result = await login(values.username, values.password);
-      setAuth(result.token, result.user, values.tenantId);
+      const result = await login(values.username, values.password, values.tenantId);
+      setAuth(result.token, result.user, result.tenantId);
       message.success('登录成功');
       router.push('/dashboard');
     } catch {

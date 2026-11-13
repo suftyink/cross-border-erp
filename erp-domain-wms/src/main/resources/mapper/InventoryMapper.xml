@@ -20,6 +20,24 @@
         ORDER BY code
     </select>
 
+    <select id="lockWarehouse" resultType="string">
+        SELECT warehouse_id FROM wms_warehouse
+        WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId} FOR UPDATE
+    </select>
+
+    <insert id="ensureBalance">
+        INSERT INTO wms_inventory_balance (tenant_id, warehouse_id, seller_sku)
+        VALUES (#{tenantId}, #{warehouseId}, #{sellerSku})
+        ON CONFLICT (tenant_id, warehouse_id, seller_sku) DO NOTHING
+    </insert>
+
+    <select id="lockBalance" resultType="com.aidotnet.erp.wms.infrastructure.data.InventoryBalanceDO">
+        SELECT tenant_id, warehouse_id, seller_sku, on_hand, reserved, in_transit, frozen, updated_at
+        FROM wms_inventory_balance
+        WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId} AND seller_sku = #{sellerSku}
+        FOR UPDATE
+    </select>
+
     <insert id="insertBalance" parameterType="com.aidotnet.erp.wms.infrastructure.data.InventoryBalanceDO">
         INSERT INTO wms_inventory_balance (tenant_id, warehouse_id, seller_sku, on_hand, reserved, in_transit, frozen, updated_at)
         VALUES (#{tenantId}, #{warehouseId}, #{sellerSku}, #{onHand}, #{reserved}, #{inTransit}, #{frozen}, #{updatedAt})
