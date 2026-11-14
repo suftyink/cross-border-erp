@@ -14,11 +14,12 @@ const allPermissions = [
   'inventory:read', 'inventory:write', 'finance:read', 'finance:write',
   'customer:read', 'customer:write', 'logistics:read', 'logistics:write',
   'system:read', 'system:write', 'report:read', 'ads:read', 'ads:write',
-  'wms:receipt:write', 'scm:supplier:tolerance:write', 'scm:purchase:amend',
+  'wms:receipt:write', 'wms:inspection:write', 'scm:supplier:tolerance:write', 'scm:purchase:amend',
 ];
 
 const permissionLabels: Record<string, string> = {
   'wms:receipt:write': '仓储 · 确认采购收货',
+  'wms:inspection:write': '仓储 · 采购批次质检',
   'scm:supplier:tolerance:write': '采购 · 设置供应商超收容差',
   'scm:purchase:amend': '采购 · 变更收齐采购单',
 };

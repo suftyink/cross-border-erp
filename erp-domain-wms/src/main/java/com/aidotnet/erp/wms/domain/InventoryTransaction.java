@@ -24,8 +24,21 @@ public record InventoryTransaction(
         String referenceType,
         String referenceId,
         String remark,
-        Instant createdAt
+        Instant createdAt,
+        String batchNo,
+        String operatorId,
+        Integer pendingInspectionDelta,
+        Integer pendingPutawayDelta,
+        Integer quarantinedDelta
 ) {
+    public InventoryTransaction(String transactionId, String tenantId, String warehouseId, String sellerSku,
+                                TransactionType transactionType, int quantity, int beforeOnHand, int beforeReserved,
+                                int afterOnHand, int afterReserved, String referenceType, String referenceId,
+                                String remark, Instant createdAt) {
+        this(transactionId, tenantId, warehouseId, sellerSku, transactionType, quantity, beforeOnHand,
+                beforeReserved, afterOnHand, afterReserved, referenceType, referenceId, remark, createdAt,
+                null, null, null, null, null);
+    }
     /** 事务类型 */
     public enum TransactionType {
         /** 入库 */
@@ -37,6 +50,7 @@ public record InventoryTransaction(
         /** 扣减(出库) */
         DEDUCT,
         /** 库存调整 */
-        STOCK_ADJUST
+        STOCK_ADJUST,
+        QUALITY_DISPOSITION
     }
 }

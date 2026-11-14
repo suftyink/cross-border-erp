@@ -20,6 +20,22 @@ public class InventoryTransactionDO {
     private String referenceId;
     private String remark;
     private Instant createdAt;
+    private String batchNo;
+    private String operatorId;
+    private Integer pendingInspectionDelta;
+    private Integer pendingPutawayDelta;
+    private Integer quarantinedDelta;
+
+    public String getBatchNo() { return batchNo; }
+    public void setBatchNo(String value) { batchNo = value; }
+    public String getOperatorId() { return operatorId; }
+    public void setOperatorId(String value) { operatorId = value; }
+    public Integer getPendingInspectionDelta() { return pendingInspectionDelta; }
+    public void setPendingInspectionDelta(Integer value) { pendingInspectionDelta = value; }
+    public Integer getPendingPutawayDelta() { return pendingPutawayDelta; }
+    public void setPendingPutawayDelta(Integer value) { pendingPutawayDelta = value; }
+    public Integer getQuarantinedDelta() { return quarantinedDelta; }
+    public void setQuarantinedDelta(Integer value) { quarantinedDelta = value; }
 
     public String getTransactionId() {
         return transactionId;

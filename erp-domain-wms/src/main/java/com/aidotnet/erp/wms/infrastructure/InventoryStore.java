@@ -1,9 +1,11 @@
 package com.aidotnet.erp.wms.infrastructure;
 
+import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.wms.domain.InventoryBalance;
 import com.aidotnet.erp.wms.domain.InventoryPrediction;
 import com.aidotnet.erp.wms.domain.InventoryTransaction;
 import com.aidotnet.erp.wms.domain.InventoryTransactionType;
+import com.aidotnet.erp.wms.domain.PurchaseInspectionBatch;
 import com.aidotnet.erp.wms.domain.StockCheck;
 import com.aidotnet.erp.wms.domain.Warehouse;
 import com.aidotnet.erp.wms.domain.WarehouseLocation;
@@ -18,6 +20,7 @@ import com.aidotnet.erp.wms.infrastructure.mapper.InventoryMapper;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
 
@@ -65,7 +68,7 @@ public class InventoryStore {
     }
 
     public void receivePendingInspection(String tenantId, String warehouseId, String sku, int quantity,
-                                         String receiptId, Instant receivedAt) {
+                                         String receiptId, String batchNo, String operatorId, Instant receivedAt) {
         InventoryBalance before = lockOrCreateBalance(tenantId, warehouseId, sku);
         InventoryBalance after = new InventoryBalance(tenantId, warehouseId, sku,
                 Math.addExact(before.onHand(), quantity), before.reserved(), before.inTransit(),
@@ -73,9 +76,24 @@ public class InventoryStore {
         InventoryBalanceDO data = toBalanceData(after);
         data.setUpdatedAt(receivedAt);
         inventoryMapper.updateBalance(data);
-        saveTransaction(new InventoryTransaction(java.util.UUID.randomUUID().toString(), tenantId, warehouseId, sku,
+        saveTransaction(new InventoryTransaction(UUID.randomUUID().toString(), tenantId, warehouseId, sku,
                 InventoryTransaction.TransactionType.RECEIVE, quantity, before.onHand(), before.reserved(),
-                after.onHand(), after.reserved(), "PURCHASE_RECEIPT", receiptId, "采购收货转待检", receivedAt));
+                after.onHand(), after.reserved(), "PURCHASE_RECEIPT", receiptId, "采购收货转待检", receivedAt,
+                batchNo, operatorId, quantity, 0, 0));
+    }
+
+    public void recordPurchaseDisposition(String tenantId, PurchaseInspectionBatch batch, String inspectionId,
+                                           String operatorId, int good, int defective, Instant at) {
+        InventoryBalance balance = lockBalanceWithPurchaseStates(tenantId, batch.warehouseId(), batch.sellerSku())
+                .orElseThrow(() -> new BizException("INVENTORY_NOT_FOUND", "库存不存在"));
+        if (balance.legacyFrozenQuantity() < 0 || balance.onHand() < balance.frozen()) {
+            throw new BizException("INSPECTION_INVENTORY_MISMATCH", "批次与冻结库存不一致，请核查库存");
+        }
+        saveTransaction(new InventoryTransaction(UUID.randomUUID().toString(), tenantId, batch.warehouseId(),
+                batch.sellerSku(), InventoryTransaction.TransactionType.QUALITY_DISPOSITION, batch.receivedQuantity(),
+                balance.onHand(), balance.reserved(), balance.onHand(), balance.reserved(), "PURCHASE_INSPECTION",
+                inspectionId, "采购批次整批质检判定", at, batch.batchNo(), operatorId,
+                -batch.receivedQuantity(), good, defective));
     }
 
     public List<Warehouse> listWarehouses(String tenantId) {
@@ -84,15 +102,10 @@ public class InventoryStore {
     }
 
     public InventoryBalance saveBalance(InventoryBalance balance) {
-        InventoryBalanceDO existing = inventoryMapper.selectBalance(
-                balance.tenantId(), balance.warehouseId(), balance.sellerSku());
+        inventoryMapper.ensureBalance(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
         InventoryBalanceDO data = toBalanceData(balance);
         data.setUpdatedAt(Instant.now());
-        if (existing != null) {
-            inventoryMapper.updateBalance(data);
-        } else {
-            inventoryMapper.insertBalance(data);
-        }
+        inventoryMapper.updateBalance(data);
         return balance;
     }
 
@@ -104,6 +117,10 @@ public class InventoryStore {
     public Optional<InventoryBalance> lockBalance(String tenantId, String warehouseId, String sellerSku) {
         return Optional.ofNullable(inventoryMapper.lockBalance(tenantId, warehouseId, sellerSku))
                 .map(this::toBalanceDomain);
+    }
+
+    public Optional<InventoryBalance> lockBalanceWithPurchaseStates(String tenantId, String warehouseId, String sellerSku) {
+        return lockBalance(tenantId, warehouseId, sellerSku).flatMap(balance -> findBalance(tenantId, warehouseId, sellerSku));
     }
 
     public InventoryBalance lockOrCreateBalance(String tenantId, String warehouseId, String sellerSku) {
@@ -300,10 +317,10 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void unfreezeInventory(String sellerSku, String warehouseId, int quantity, String referenceId) {
         String tenantId = com.aidotnet.erp.common.tenant.TenantContext.getTenantId();
-        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalanceWithPurchaseStates(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INSUFFICIENT_INVENTORY", "库存不存在: " + sellerSku));
         int beforeFrozen = balance.frozen();
-        int afterFrozen = Math.max(0, beforeFrozen - quantity);
+        int afterFrozen = beforeFrozen - Math.min(quantity, Math.max(0, balance.legacyFrozenQuantity()));
         saveBalance(new InventoryBalance(tenantId, warehouseId, sellerSku, balance.onHand(), balance.reserved(),
                 balance.inTransit(), afterFrozen, Instant.now()));
         InventoryTransaction txn = new InventoryTransaction(java.util.UUID.randomUUID().toString(), tenantId, warehouseId,
@@ -380,9 +397,9 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void unfreezeInventory(String tenantId, String sellerSku, String warehouseId, int quantity,
                                   String referenceType, String referenceId, String remark) {
-        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalanceWithPurchaseStates(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INSUFFICIENT_INVENTORY", "inventory not found: " + sellerSku));
-        if (balance.frozen() < quantity) {
+        if (balance.legacyFrozenQuantity() < quantity) {
             throw new com.aidotnet.erp.common.exception.BizException(
                     "INSUFFICIENT_FROZEN_INVENTORY", "冻结库存不足，无法释放: " + sellerSku);
         }
@@ -399,9 +416,9 @@ public class InventoryStore {
     @org.springframework.transaction.annotation.Transactional
     public void consumeFrozenInventory(String tenantId, String sellerSku, String warehouseId, int quantity,
                                        String referenceType, String referenceId, String remark) {
-        InventoryBalance balance = lockBalance(tenantId, warehouseId, sellerSku)
+        InventoryBalance balance = lockBalanceWithPurchaseStates(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new com.aidotnet.erp.common.exception.BizException("INVENTORY_NOT_FOUND", "inventory not found: " + sellerSku));
-        if (balance.frozen() < quantity) {
+        if (balance.legacyFrozenQuantity() < quantity) {
             throw new com.aidotnet.erp.common.exception.BizException(
                     "INSUFFICIENT_FROZEN_INVENTORY", "frozen inventory is insufficient: " + sellerSku);
         }
@@ -472,7 +489,7 @@ public class InventoryStore {
                 d.getReserved() != null ? d.getReserved() : 0,
                 d.getInTransit() != null ? d.getInTransit() : 0,
                 d.getFrozen() != null ? d.getFrozen() : 0,
-                d.getUpdatedAt());
+                d.getUpdatedAt(), d.getPendingInspection(), d.getPendingPutaway(), d.getQuarantined());
     }
 
     private WarehouseLocationDO toLocationData(WarehouseLocation l) {
@@ -581,6 +598,11 @@ public class InventoryStore {
         data.setReferenceId(transaction.referenceId());
         data.setRemark(transaction.remark());
         data.setCreatedAt(transaction.createdAt());
+        data.setBatchNo(transaction.batchNo());
+        data.setOperatorId(transaction.operatorId());
+        data.setPendingInspectionDelta(transaction.pendingInspectionDelta());
+        data.setPendingPutawayDelta(transaction.pendingPutawayDelta());
+        data.setQuarantinedDelta(transaction.quarantinedDelta());
         return data;
     }
 
@@ -599,6 +621,7 @@ public class InventoryStore {
                 data.getReferenceType(),
                 data.getReferenceId(),
                 data.getRemark(),
-                data.getCreatedAt());
+                data.getCreatedAt(), data.getBatchNo(), data.getOperatorId(), data.getPendingInspectionDelta(),
+                data.getPendingPutawayDelta(), data.getQuarantinedDelta());
     }
 }

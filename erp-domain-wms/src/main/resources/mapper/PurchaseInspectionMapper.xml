@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.PurchaseInspectionMapper">
+    <sql id="batchColumns">
+        l.batch_no, o.order_id, o.reference_id, l.purchase_order_line_id, o.warehouse_id,
+        l.seller_sku, l.supplier_batch_no, l.received_quantity, o.created_at,
+        CASE
+            WHEN i.disposed_at IS NOT NULL THEN 'DISPOSED'
+            WHEN i.inspection_id IS NULL THEN 'PENDING_SAMPLE'
+            WHEN i.sample_failed &gt; 0 AND i.rechecked_at IS NULL THEN 'PENDING_RECHECK'
+            ELSE 'PENDING_DISPOSITION'
+        END AS status
+    </sql>
+
+    <sql id="receiptBatches">
+        FROM wms_inbound_order o
+        JOIN wms_inbound_order_line l ON l.order_id = o.order_id
+        LEFT JOIN wms_purchase_inspection i ON i.tenant_id = o.tenant_id AND i.batch_no = l.batch_no
+        WHERE o.tenant_id = #{tenantId} AND o.reference_type = 'PURCHASE_RECEIPT'
+          AND o.status = 'COMPLETED' AND l.batch_no IS NOT NULL
+    </sql>
+
+    <select id="selectWork" resultType="com.aidotnet.erp.wms.domain.PurchaseInspectionBatch">
+        SELECT <include refid="batchColumns"/>
+        <include refid="receiptBatches"/>
+        AND i.disposed_at IS NULL
+        <if test="purchaseOrderId != null">AND o.reference_id = #{purchaseOrderId}</if>
+        ORDER BY o.created_at, o.order_id, l.receipt_position, l.line_id
+    </select>
+
+    <select id="selectBatch" resultType="com.aidotnet.erp.wms.domain.PurchaseInspectionBatch">
+        SELECT <include refid="batchColumns"/>
+        <include refid="receiptBatches"/>
+        AND l.line_id = #{batchNo}
+        <if test="lock">FOR UPDATE OF l</if>
+    </select>
+
+    <select id="selectInspection" resultType="com.aidotnet.erp.wms.domain.PurchaseInspection">
+        SELECT inspection_id, sample_checked, sample_passed, sample_failed, sample_operator_id, sampled_at,
+               recheck_method, recheck_checked, recheck_passed, recheck_failed, recheck_operator_id, rechecked_at,
+               good_quantity, defective_quantity, disposition_operator_id, disposed_at
+        FROM wms_purchase_inspection WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo}
+    </select>
+
+    <insert id="insertSample">
+        INSERT INTO wms_purchase_inspection (inspection_id, tenant_id, batch_no, sample_checked,
+                sample_passed, sample_failed, sample_operator_id, sampled_at)
+        VALUES (#{inspectionId}, #{tenantId}, #{batchNo}, #{sample.checkedQuantity}, #{sample.passedQuantity},
+                #{sample.failedQuantity}, #{sample.operatorId}, #{sample.checkedAt})
+    </insert>
+
+    <update id="updateRecheck">
+        UPDATE wms_purchase_inspection
+        SET recheck_method = #{recheck.method}, recheck_checked = #{recheck.checkedQuantity},
+            recheck_passed = #{recheck.passedQuantity}, recheck_failed = #{recheck.failedQuantity},
+            recheck_operator_id = #{recheck.operatorId}, rechecked_at = #{recheck.checkedAt}
+        WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo}
+    </update>
+
+    <update id="updateDisposition">
+        UPDATE wms_purchase_inspection
+        SET good_quantity = #{good}, defective_quantity = #{defective},
+            disposition_operator_id = #{operatorId}, disposed_at = #{disposedAt}
+        WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo}
+    </update>
+</mapper>

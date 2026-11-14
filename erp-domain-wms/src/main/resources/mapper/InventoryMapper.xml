@@ -38,35 +38,43 @@
         FOR UPDATE
     </select>
 
-    <insert id="insertBalance" parameterType="com.aidotnet.erp.wms.infrastructure.data.InventoryBalanceDO">
-        INSERT INTO wms_inventory_balance (tenant_id, warehouse_id, seller_sku, on_hand, reserved, in_transit, frozen, updated_at)
-        VALUES (#{tenantId}, #{warehouseId}, #{sellerSku}, #{onHand}, #{reserved}, #{inTransit}, #{frozen}, #{updatedAt})
-    </insert>
-
     <update id="updateBalance" parameterType="com.aidotnet.erp.wms.infrastructure.data.InventoryBalanceDO">
         UPDATE wms_inventory_balance
         SET on_hand = #{onHand}, reserved = #{reserved}, in_transit = #{inTransit}, frozen = #{frozen}, updated_at = #{updatedAt}
         WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId} AND seller_sku = #{sellerSku}
     </update>
 
+    <sql id="balancesWithPurchaseStates">
+        SELECT b.tenant_id, b.warehouse_id, b.seller_sku, b.on_hand, b.reserved, b.in_transit, b.frozen, b.updated_at,
+               qc.pending_inspection, qc.pending_putaway, qc.quarantined
+        FROM wms_inventory_balance b
+        CROSS JOIN LATERAL (
+            SELECT COALESCE(SUM(l.received_quantity) FILTER (WHERE i.disposed_at IS NULL), 0) AS pending_inspection,
+                   COALESCE(SUM(i.good_quantity), 0) AS pending_putaway,
+                   COALESCE(SUM(i.defective_quantity), 0) AS quarantined
+            FROM wms_inbound_order o
+            JOIN wms_inbound_order_line l ON l.order_id = o.order_id
+            LEFT JOIN wms_purchase_inspection i ON i.tenant_id = o.tenant_id AND i.batch_no = l.batch_no
+            WHERE o.tenant_id = b.tenant_id AND o.warehouse_id = b.warehouse_id AND l.seller_sku = b.seller_sku
+              AND o.reference_type = 'PURCHASE_RECEIPT' AND o.status = 'COMPLETED' AND l.batch_no IS NOT NULL
+        ) qc
+    </sql>
+
     <select id="selectBalance" resultType="com.aidotnet.erp.wms.infrastructure.data.InventoryBalanceDO">
-        SELECT tenant_id, warehouse_id, seller_sku, on_hand, reserved, in_transit, frozen, updated_at
-        FROM wms_inventory_balance
-        WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId} AND seller_sku = #{sellerSku}
+        <include refid="balancesWithPurchaseStates"/>
+        WHERE b.tenant_id = #{tenantId} AND b.warehouse_id = #{warehouseId} AND b.seller_sku = #{sellerSku}
     </select>
 
     <select id="selectBalances" resultType="com.aidotnet.erp.wms.infrastructure.data.InventoryBalanceDO">
-        SELECT tenant_id, warehouse_id, seller_sku, on_hand, reserved, in_transit, frozen, updated_at
-        FROM wms_inventory_balance
-        WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId}
-        ORDER BY seller_sku
+        <include refid="balancesWithPurchaseStates"/>
+        WHERE b.tenant_id = #{tenantId} AND b.warehouse_id = #{warehouseId}
+        ORDER BY b.seller_sku
     </select>
 
     <select id="selectBalancesBySku" resultType="com.aidotnet.erp.wms.infrastructure.data.InventoryBalanceDO">
-        SELECT tenant_id, warehouse_id, seller_sku, on_hand, reserved, in_transit, frozen, updated_at
-        FROM wms_inventory_balance
-        WHERE tenant_id = #{tenantId} AND seller_sku = #{sellerSku}
-        ORDER BY warehouse_id
+        <include refid="balancesWithPurchaseStates"/>
+        WHERE b.tenant_id = #{tenantId} AND b.seller_sku = #{sellerSku}
+        ORDER BY b.warehouse_id
     </select>
 
     <insert id="insertLocation" parameterType="com.aidotnet.erp.wms.infrastructure.data.WarehouseLocationDO">
@@ -154,19 +162,22 @@
         INSERT INTO wms_inventory_transaction (
             transaction_id, tenant_id, warehouse_id, seller_sku, transaction_type, quantity,
             before_on_hand, before_reserved, after_on_hand, after_reserved,
-            reference_type, reference_id, remark, created_at
+            reference_type, reference_id, remark, created_at, batch_no, operator_id,
+            pending_inspection_delta, pending_putaway_delta, quarantined_delta
         )
         VALUES (
             #{transactionId}, #{tenantId}, #{warehouseId}, #{sellerSku}, #{transactionType}, #{quantity},
             #{beforeOnHand}, #{beforeReserved}, #{afterOnHand}, #{afterReserved},
-            #{referenceType}, #{referenceId}, #{remark}, #{createdAt}
+            #{referenceType}, #{referenceId}, #{remark}, #{createdAt}, #{batchNo}, #{operatorId},
+            #{pendingInspectionDelta}, #{pendingPutawayDelta}, #{quarantinedDelta}
         )
     </insert>
 
     <select id="selectTransactions" resultType="com.aidotnet.erp.wms.infrastructure.data.InventoryTransactionDO">
         SELECT transaction_id, tenant_id, warehouse_id, seller_sku, transaction_type, quantity,
                before_on_hand, before_reserved, after_on_hand, after_reserved,
-               reference_type, reference_id, remark, created_at
+               reference_type, reference_id, remark, created_at, batch_no, operator_id,
+               pending_inspection_delta, pending_putaway_delta, quarantined_delta
         FROM wms_inventory_transaction
         WHERE tenant_id = #{tenantId}
         <if test="warehouseId != null and warehouseId != ''">

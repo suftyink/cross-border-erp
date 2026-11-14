@@ -125,7 +125,7 @@ public class InventoryService {
                 "warehouseId", command.warehouseId(),
                 "quantity", command.quantity(),
                 "operation", "RECEIVE"));
-        return updated;
+        return includePurchaseStates(updated);
     }
 
     @Transactional
@@ -144,7 +144,7 @@ public class InventoryService {
                 current.frozen(),
                 Instant.now()));
         recordTransaction(command, InventoryTransaction.TransactionType.RESERVE, current, updated, "MANUAL_RESERVE", "库存预占");
-        return updated;
+        return includePurchaseStates(updated);
     }
 
     @Transactional
@@ -163,7 +163,7 @@ public class InventoryService {
                 current.frozen(),
                 Instant.now()));
         recordTransaction(command, InventoryTransaction.TransactionType.RELEASE, current, updated, "MANUAL_RELEASE", "库存释放");
-        return updated;
+        return includePurchaseStates(updated);
     }
 
     @Transactional
@@ -182,7 +182,7 @@ public class InventoryService {
                 current.frozen(),
                 Instant.now()));
         recordTransaction(command, InventoryTransaction.TransactionType.DEDUCT, current, updated, "MANUAL_DEDUCT", "库存出库扣减");
-        return updated;
+        return includePurchaseStates(updated);
     }
 
     public List<InventoryBalance> listBalances(String tenantId, String warehouseId) {
@@ -228,6 +228,9 @@ public class InventoryService {
             throw new BizException("STOCK_CHECK_DATA_INVALID", "盘点明细不存在");
         }
         InventoryBalance balance = inventoryStore.lockOrCreateBalance(tenantId, check.warehouseId(), check.sellerSku());
+        if ((long) check.actualQuantity() < (long) balance.frozen() + balance.reserved()) {
+            throw new BizException("STOCK_CHECK_BELOW_COMMITTED_INVENTORY", "盘点实数不能低于冻结量与预占量之和");
+        }
         InventoryBalance updated = inventoryStore.saveBalance(new InventoryBalance(
                 tenantId,
                 check.warehouseId(),
@@ -316,6 +319,10 @@ public class InventoryService {
     private void ensureWarehouse(String tenantId, String warehouseId) {
         inventoryStore.findWarehouse(tenantId, warehouseId)
                 .orElseThrow(() -> new BizException("WAREHOUSE_NOT_FOUND", "仓库不存在"));
+    }
+
+    private InventoryBalance includePurchaseStates(InventoryBalance updated) {
+        return inventoryStore.findBalance(updated.tenantId(), updated.warehouseId(), updated.sellerSku()).orElse(updated);
     }
 
     private InventoryBalance getBalance(String tenantId, String warehouseId, String sellerSku) {

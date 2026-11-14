@@ -24,7 +24,16 @@ import java.time.Instant;
  */
 public record InventoryBalance(String tenantId, String warehouseId, String sellerSku,
                                int onHand, int reserved, int inTransit, int frozen,
-                               Instant updatedAt) {
+                               Instant updatedAt, int pendingInspection, int pendingPutaway, int quarantined) {
+
+    public InventoryBalance(String tenantId, String warehouseId, String sellerSku, int onHand, int reserved,
+                            int inTransit, int frozen, Instant updatedAt) {
+        this(tenantId, warehouseId, sellerSku, onHand, reserved, inTransit, frozen, updatedAt, 0, 0, 0);
+    }
+
+    public int legacyFrozenQuantity() {
+        return frozen - pendingInspection - pendingPutaway - quarantined;
+    }
 
     /** 计算可用库存 = 在手 - 预占 - 冻结 */
     public int getAvailable() {

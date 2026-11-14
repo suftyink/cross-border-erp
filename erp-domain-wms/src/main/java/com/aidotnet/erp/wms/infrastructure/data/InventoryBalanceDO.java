@@ -14,6 +14,9 @@ public class InventoryBalanceDO {
     private Integer inTransit;
     private Integer frozen;
     private Instant updatedAt;
+    private int pendingInspection;
+    private int pendingPutaway;
+    private int quarantined;
 
     public InventoryBalanceDO() {
     }
@@ -34,4 +37,10 @@ public class InventoryBalanceDO {
     public void setFrozen(Integer frozen) { this.frozen = frozen; }
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+    public int getPendingInspection() { return pendingInspection; }
+    public void setPendingInspection(int value) { pendingInspection = value; }
+    public int getPendingPutaway() { return pendingPutaway; }
+    public void setPendingPutaway(int value) { pendingPutaway = value; }
+    public int getQuarantined() { return quarantined; }
+    public void setQuarantined(int value) { quarantined = value; }
 }

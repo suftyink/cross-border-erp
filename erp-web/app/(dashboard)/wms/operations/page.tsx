@@ -10,6 +10,7 @@ import { useApi } from '@/lib/hooks';
 import { useAuthStore } from '@/lib/store';
 import type { PurchaseOrder, PurchaseReceipt, PurchaseReceiptInput, PurchaseReceiptMovement, Warehouse } from '@/types';
 import { ReceiptLabels } from './receipt-labels';
+import { InspectionDialog, InspectionWork } from './purchase-inspection';
 
 const receiptsApi = '/wms/api/in/v1/purchase-receipts';
 type PendingReceipt = { orderId: string; request: PurchaseReceiptInput };
@@ -30,6 +31,7 @@ function ReceiptWork() {
   const purchaseOrderId = useSearchParams().get('purchaseOrderId');
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder>();
   const [selectedReceipt, setSelectedReceipt] = useState<PurchaseReceipt>();
+  const [inspectionBatch, setInspectionBatch] = useState<string>();
   const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState<PendingReceipt>();
   const [form] = Form.useForm<Omit<PurchaseReceiptInput, 'receiptId'>>();
@@ -116,6 +118,8 @@ function ReceiptWork() {
             ]} />
           </Card>
         </Space>
+      ) }, { key: 'inspection', label: '质检', children: (
+        <InspectionWork purchaseOrderId={purchaseOrderId} warehouses={warehouses ?? []} />
       ) }]} />
 
       <Modal title={`确认到货 ${selectedOrder?.poNumber ?? ''}`} open={!!selectedOrder}
@@ -170,6 +174,7 @@ function ReceiptWork() {
             { title: '供应商批号', dataIndex: 'supplierBatchNo' },
             { title: '内部批次', dataIndex: 'batchNo' },
             { title: '实收', dataIndex: 'quantity' },
+            { title: '质检', render: (_, row) => <Button size="small" onClick={() => setInspectionBatch(row.batchNo)}>质检记录</Button> },
           ]} />
           {movements.error && <Alert type="error" message="库存流水加载失败" />}
           <Table<PurchaseReceiptMovement> rowKey="batchNo" size="small" pagination={false} loading={movements.isLoading}
@@ -182,6 +187,7 @@ function ReceiptWork() {
             ]} />
         </Space>}
       </Modal>
+      {inspectionBatch && <InspectionDialog batchNo={inspectionBatch} onClose={() => setInspectionBatch(undefined)} />}
     </>
   );
 }

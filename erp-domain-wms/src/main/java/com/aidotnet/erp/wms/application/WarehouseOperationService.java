@@ -455,7 +455,10 @@ public class WarehouseOperationService {
 
         String locationId = null;
         if (command.inboundOrderId() != null && !command.inboundOrderId().isBlank()) {
-            getInboundOrder(tenantId, command.inboundOrderId());
+            InboundOrder inbound = getInboundOrder(tenantId, command.inboundOrderId());
+            if (PurchaseReceiptService.REFERENCE_TYPE.equals(inbound.referenceType())) {
+                throw new BizException("PURCHASE_BATCH_INSPECTION_REQUIRED", "采购收货请在仓储作业按收货批次质检");
+            }
             List<InboundOrderLine> inboundLines = orderStore.listInboundOrderLines(command.inboundOrderId()).stream()
                     .filter(line -> line.sellerSku().equals(command.sellerSku()))
                     .toList();
@@ -825,7 +828,7 @@ public class WarehouseOperationService {
     private void ensureDefectiveInventoryAvailable(String tenantId, String warehouseId, String sellerSku, int quantity) {
         int frozen = inventoryStore.findBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new BizException("INVENTORY_NOT_FOUND", "inventory not found"))
-                .frozen();
+                .legacyFrozenQuantity();
         int pendingReturnQuantity = orderStore.pendingDefectiveReturnQuantity(tenantId, warehouseId, sellerSku);
         if (frozen - pendingReturnQuantity < quantity) {
             throw new BizException("DEFECTIVE_INVENTORY_NOT_ENOUGH", "defective inventory is insufficient for return");
@@ -835,7 +838,7 @@ public class WarehouseOperationService {
     private void ensureRepairableDefectiveInventoryAvailable(String tenantId, String warehouseId, String sellerSku, int quantity) {
         int frozen = inventoryStore.findBalance(tenantId, warehouseId, sellerSku)
                 .orElseThrow(() -> new BizException("INVENTORY_NOT_FOUND", "inventory not found"))
-                .frozen();
+                .legacyFrozenQuantity();
         int pendingReturnQuantity = orderStore.pendingDefectiveReturnQuantity(tenantId, warehouseId, sellerSku);
         if (frozen - pendingReturnQuantity < quantity) {
             throw new BizException("DEFECTIVE_INVENTORY_NOT_ENOUGH", "defective inventory is insufficient for repair");

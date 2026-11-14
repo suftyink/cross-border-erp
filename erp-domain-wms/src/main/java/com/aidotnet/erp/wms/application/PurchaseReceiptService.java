@@ -64,7 +64,7 @@ public class PurchaseReceiptService implements PurchaseReceiptOperations {
                     line.quantity(), line.quantity(), line.unitCost(), batchNo, line.purchaseOrderLineId(),
                     line.supplierBatchNo(), index));
             inventory.receivePendingInspection(tenantId, warehouseId, line.sellerSku(), line.quantity(),
-                    receiptId, receivedAt);
+                    receiptId, batchNo, operatorId, receivedAt);
             orders.saveMovement(new InventoryMovement(batchNo, tenantId, warehouseId,
                     line.sellerSku(), null, null, line.quantity(), MovementType.RECEIVING,
                     REFERENCE_TYPE, receiptId, receivedAt));

@@ -44,8 +44,6 @@ public interface InventoryMapper {
     // ---- 库存余额 ----
 
     /** 新增库存余额 */
-    void insertBalance(InventoryBalanceDO balance);
-
     /** 更新库存余额 */
     void updateBalance(InventoryBalanceDO balance);
 
