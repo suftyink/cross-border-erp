@@ -75,7 +75,8 @@ public interface ScmExtMapper {
     /** 更新采购跟踪 */
     void updateTracking(PurchaseTrackingDO tracking);
     /** 按采购单ID+行ID查询跟踪 */
-    PurchaseTrackingDO selectTracking(@Param("tenantId") String tenantId, @Param("poId") String poId, @Param("lineId") String lineId);
+    PurchaseTrackingDO selectTracking(@Param("tenantId") String tenantId, @Param("poId") String poId,
+                                      @Param("lineId") String lineId, @Param("forUpdate") boolean forUpdate);
     /** 按采购单ID查询跟踪列表 */
     List<PurchaseTrackingDO> selectTrackings(@Param("tenantId") String tenantId, @Param("poId") String poId);
 

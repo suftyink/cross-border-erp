@@ -6,11 +6,11 @@
         INSERT INTO scm_purchase_order (po_id, tenant_id, supplier_id, po_number, currency, total_amount,
                                         status, payment_terms, shipping_terms, purchase_type,
                                         expected_delivery_date, actual_delivery_date, notes,
-                                        created_by, approved_by, created_at, updated_at)
+                                        created_by, approved_by, created_at, updated_at, receipt_tolerance_percent)
         VALUES (#{poId}, #{tenantId}, #{supplierId}, #{poNumber}, #{currency}, #{totalAmount},
                 #{status}, #{paymentTerms}, #{shippingTerms}, #{purchaseType},
                 #{expectedDeliveryDate}, #{actualDeliveryDate}, #{notes},
-                #{createdBy}, #{approvedBy}, #{createdAt}, #{updatedAt})
+                #{createdBy}, #{approvedBy}, #{createdAt}, #{updatedAt}, #{receiptTolerancePercent})
     </insert>
 
     <update id="updateOrder" parameterType="com.aidotnet.erp.scm.infrastructure.data.PurchaseOrderDO">
@@ -19,14 +19,15 @@
             total_amount = #{totalAmount}, status = #{status}, payment_terms = #{paymentTerms},
             shipping_terms = #{shippingTerms}, purchase_type = #{purchaseType},
             expected_delivery_date = #{expectedDeliveryDate}, actual_delivery_date = #{actualDeliveryDate},
-            notes = #{notes}, created_by = #{createdBy}, approved_by = #{approvedBy}, updated_at = #{updatedAt}
+            notes = #{notes}, created_by = #{createdBy}, approved_by = #{approvedBy}, updated_at = #{updatedAt},
+            receipt_tolerance_percent = #{receiptTolerancePercent}
         WHERE po_id = #{poId} AND tenant_id = #{tenantId}
     </update>
 
     <select id="selectOrder" resultType="com.aidotnet.erp.scm.infrastructure.data.PurchaseOrderDO">
         SELECT po_id, tenant_id, supplier_id, po_number, currency, total_amount, status,
                payment_terms, shipping_terms, purchase_type, expected_delivery_date, actual_delivery_date,
-               notes, created_by, approved_by, created_at, updated_at
+               notes, created_by, approved_by, created_at, updated_at, receipt_tolerance_percent
         FROM scm_purchase_order
         WHERE po_id = #{poId} AND tenant_id = #{tenantId}
     </select>
@@ -40,7 +41,7 @@
     <select id="selectOrders" resultType="com.aidotnet.erp.scm.infrastructure.data.PurchaseOrderDO">
         SELECT po_id, tenant_id, supplier_id, po_number, currency, total_amount, status,
                payment_terms, shipping_terms, purchase_type, expected_delivery_date, actual_delivery_date,
-               notes, created_by, approved_by, created_at, updated_at
+               notes, created_by, approved_by, created_at, updated_at, receipt_tolerance_percent
         FROM scm_purchase_order
         WHERE tenant_id = #{tenantId}
         ORDER BY created_at DESC
@@ -48,14 +49,16 @@
 
     <insert id="insertLine" parameterType="com.aidotnet.erp.scm.infrastructure.data.PurchaseOrderLineDO">
         INSERT INTO scm_purchase_order_line (po_id, line_id, product_id, seller_sku, quantity,
-                                             received_quantity, unit_cost, total_price, expected_date)
+                                             received_quantity, unit_cost, total_price, expected_date,
+                                             original_quantity, over_received_before_amendment)
         VALUES (#{poId}, #{lineId}, #{productId}, #{sellerSku}, #{quantity},
-                #{receivedQuantity}, #{unitCost}, #{totalPrice}, #{expectedDate})
+                #{receivedQuantity}, #{unitCost}, #{totalPrice}, #{expectedDate},
+                #{originalQuantity}, #{overReceivedBeforeAmendment})
     </insert>
 
     <select id="selectLines" resultType="com.aidotnet.erp.scm.infrastructure.data.PurchaseOrderLineDO">
         SELECT po_id, line_id, product_id, seller_sku, quantity, received_quantity,
-               unit_cost, total_price, expected_date
+               unit_cost, total_price, expected_date, original_quantity, over_received_before_amendment
         FROM scm_purchase_order_line
         WHERE po_id = #{poId}
         ORDER BY line_id
@@ -64,5 +67,19 @@
     <delete id="deleteLines">
         DELETE FROM scm_purchase_order_line WHERE po_id = #{poId}
     </delete>
+
+    <insert id="insertAmendmentLine">
+        INSERT INTO scm_purchase_amendment_line (amendment_id, tenant_id, po_id, line_id, previous_quantity,
+                                                  revised_quantity, reason, operator_id, created_at)
+        VALUES (#{line.amendmentId}, #{tenantId}, #{poId}, #{line.lineId}, #{line.previousQuantity},
+                #{line.revisedQuantity}, #{line.reason}, #{line.operatorId}, #{line.createdAt})
+    </insert>
+
+    <select id="selectAmendmentLines" resultType="com.aidotnet.erp.scm.domain.PurchaseAmendmentLine">
+        SELECT amendment_id, line_id, previous_quantity, revised_quantity, reason, operator_id, created_at
+        FROM scm_purchase_amendment_line
+        WHERE tenant_id = #{tenantId} AND po_id = #{poId}
+        ORDER BY created_at DESC, amendment_id, line_id
+    </select>
 
 </mapper>

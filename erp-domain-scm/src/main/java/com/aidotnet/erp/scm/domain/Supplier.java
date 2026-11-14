@@ -1,5 +1,6 @@
 package com.aidotnet.erp.scm.domain;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
@@ -22,8 +23,16 @@ public record Supplier(
         int moq,
         String status,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        BigDecimal receiptTolerancePercent
 ) {
+    public Supplier(String supplierId, String tenantId, String name, String companyName, String contactName,
+                    String countryCode, String creditRating, int leadTimeDays, int moq, String status,
+                    Instant createdAt, Instant updatedAt) {
+        this(supplierId, tenantId, name, companyName, contactName, countryCode, creditRating,
+                leadTimeDays, moq, status, createdAt, updatedAt, BigDecimal.ZERO);
+    }
+
     /** 供应商状态 */
     public enum SupplierStatus {
         /** 活跃 */

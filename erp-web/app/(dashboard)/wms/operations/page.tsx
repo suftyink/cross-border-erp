@@ -41,6 +41,8 @@ function ReceiptWork() {
   const { data: warehouses } = useApi<Warehouse[]>('/wms/api/in/v1/warehouses');
   const movements = useApi<PurchaseReceiptMovement[]>(selectedReceipt
     ? `${receiptsApi}/${encodeURIComponent(selectedReceipt.receiptId)}/movements` : null);
+  const sourceOrder = useApi<{ poNumber: string; receiptTolerancePercent: number; overReceivedQuantity: number }>(selectedReceipt
+    ? `${receiptsApi}/${encodeURIComponent(selectedReceipt.receiptId)}/purchase-order` : null);
 
   useEffect(() => {
     const saved = sessionStorage.getItem(storageKey);
@@ -98,7 +100,9 @@ function ReceiptWork() {
           {work.data?.canReceive && <Card title="收货待办">
             <Table<PurchaseOrder> rowKey="poId" size="small" dataSource={purchaseOrders} columns={[
               { title: '采购单号', dataIndex: 'poNumber' },
-              { title: '待收数量', render: (_, order) => order.lines.reduce((sum, line) => sum + line.quantity - line.receivedQuantity, 0) },
+              { title: '待收数量', render: (_, order) => order.lines.reduce((sum, line) => sum + line.pendingQuantity, 0) },
+              { title: '超收数量', render: (_, order) => order.lines.reduce((sum, line) => sum + line.overReceivedQuantity, 0) },
+              { title: '审批锁定容差', render: (_, order) => `${order.receiptTolerancePercent}%` },
               { title: '操作', render: (_, order) => <Button disabled={!!pending} onClick={() => startReceipt(order)}>确认本次到货</Button> },
             ]} />
           </Card>}
@@ -120,6 +124,11 @@ function ReceiptWork() {
         cancelButtonProps={{ disabled: saving }} closable={!saving}
         maskClosable={false} keyboard={!saving}
         onCancel={() => { if (!saving) setSelectedOrder(undefined); }} destroyOnClose width={760}>
+        {selectedOrder && <Typography.Paragraph>
+          审批锁定容差 {selectedOrder.receiptTolerancePercent}%
+          {selectedOrder.lines.some((line) => line.originalQuantity !== line.quantity)
+            && ' · 变更后的补送按采购员确认的待收数量办理'}
+        </Typography.Paragraph>}
         <Form form={form} layout="vertical" onFinish={confirmReceipt} disabled={saving || !!pending}>
           <Form.Item name="warehouseId" label="收货仓库" rules={[{ required: true, message: '请选择收货仓库' }]}>
             <Select options={(warehouses ?? []).map((warehouse) => ({ value: warehouse.warehouseId, label: warehouse.name }))} />
@@ -128,9 +137,11 @@ function ReceiptWork() {
             {(fields, { add, remove }) => <>
               {fields.map(({ key, name }) => <Space key={key} align="baseline" wrap>
                 <Form.Item name={[name, 'lineId']} rules={[{ required: true, message: '请选择采购明细' }]}>
-                  <Select placeholder="采购明细" style={{ width: 260 }} options={selectedOrder?.lines
-                    .filter((line) => line.quantity > line.receivedQuantity)
-                    .map((line) => ({ value: line.lineId, label: `${line.sellerSku}（待收 ${line.quantity - line.receivedQuantity}）` }))} />
+                  <Select aria-label="采购明细" placeholder="采购明细" style={{ width: 285 }} options={selectedOrder?.lines
+                    .filter((line) => line.receivingLimit > line.receivedQuantity)
+                    .map((line) => ({ value: line.lineId,
+                      label: `${line.sellerSku}（待收 ${line.pendingQuantity}，最多可收 ${line.receivingLimit - line.receivedQuantity}）`,
+                    }))} />
                 </Form.Item>
                 <Form.Item name={[name, 'supplierBatchNo']}><Input maxLength={128} placeholder="供应商批号（选填）" /></Form.Item>
                 <Form.Item name={[name, 'quantity']} rules={[{ required: true, message: '请填写实收件数' }]}>
@@ -147,7 +158,11 @@ function ReceiptWork() {
       <Modal title="收货批次与流水" open={!!selectedReceipt} onCancel={() => setSelectedReceipt(undefined)}
         footer={null} width={900}>
         {selectedReceipt && <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Typography.Text>来源采购单 {selectedReceipt.purchaseOrderId}</Typography.Text>
+          <Typography.Text>来源采购单 {sourceOrder.data?.poNumber ?? selectedReceipt.purchaseOrderId}</Typography.Text>
+          {sourceOrder.error && <Alert type="error" message="采购单容差加载失败" />}
+          {sourceOrder.data && <Typography.Text>
+            审批锁定容差 {sourceOrder.data.receiptTolerancePercent}% · 采购单累计超收 {sourceOrder.data.overReceivedQuantity} 件
+          </Typography.Text>}
           <ReceiptLabels receipt={selectedReceipt} />
           <Table rowKey="batchNo" size="small" pagination={false} dataSource={selectedReceipt.lines} columns={[
             { title: 'SKU', dataIndex: 'sellerSku' },

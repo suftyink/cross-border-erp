@@ -1,6 +1,7 @@
 package com.aidotnet.erp.scm.infrastructure;
 
 import com.aidotnet.erp.scm.domain.PurchaseOrder;
+import com.aidotnet.erp.scm.domain.PurchaseAmendmentLine;
 import com.aidotnet.erp.scm.domain.PurchaseOrderLine;
 import com.aidotnet.erp.scm.domain.PurchaseOrderStatus;
 import com.aidotnet.erp.scm.domain.PurchasePlan;
@@ -32,6 +33,7 @@ import com.aidotnet.erp.scm.infrastructure.mapper.SupplierEvaluationMapper;
 import com.aidotnet.erp.scm.infrastructure.mapper.SupplierMapper;
 import com.aidotnet.erp.scm.infrastructure.mapper.SupplierQualificationMapper;
 import com.aidotnet.erp.scm.infrastructure.mapper.SupplierScoreMapper;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
@@ -200,6 +202,18 @@ public class PurchaseStore {
                 .map(order -> toPurchaseOrderDomain(order, purchaseMapper.selectLines(poId)));
     }
 
+    public boolean updateSupplierReceiptTolerance(String tenantId, String supplierId, BigDecimal percent, String operatorId) {
+        return supplierMapper.updateReceiptTolerance(tenantId, supplierId, percent, operatorId) == 1;
+    }
+
+    public void saveAmendmentLine(String tenantId, String poId, PurchaseAmendmentLine line) {
+        purchaseMapper.insertAmendmentLine(tenantId, poId, line);
+    }
+
+    public List<PurchaseAmendmentLine> listAmendmentLines(String tenantId, String poId) {
+        return purchaseMapper.selectAmendmentLines(tenantId, poId);
+    }
+
     public List<PurchaseOrder> listPurchaseOrders(String tenantId) {
         return purchaseMapper.selectOrders(tenantId).stream()
                 .map(orderDO -> {
@@ -320,7 +334,8 @@ public class PurchaseStore {
                 data.getMoq() != null ? data.getMoq() : 0,
                 data.getStatus(),
                 data.getCreatedAt(),
-                data.getUpdatedAt());
+                data.getUpdatedAt(),
+                data.getReceiptTolerancePercent());
     }
 
     private SupplierContactDO toContactData(SupplierContact contact) {
@@ -431,6 +446,7 @@ public class PurchaseStore {
         data.setNotes(purchaseOrder.notes());
         data.setCreatedBy(purchaseOrder.createdBy());
         data.setApprovedBy(purchaseOrder.approvedBy());
+        data.setReceiptTolerancePercent(purchaseOrder.receiptTolerancePercent());
         data.setCreatedAt(purchaseOrder.createdAt() != null ? purchaseOrder.createdAt() : Instant.now());
         data.setUpdatedAt(Instant.now());
         return data;
@@ -475,6 +491,8 @@ public class PurchaseStore {
         data.setSellerSku(line.sellerSku());
         data.setQuantity(line.quantity());
         data.setReceivedQuantity(line.receivedQuantity());
+        data.setOriginalQuantity(line.originalQuantity());
+        data.setOverReceivedBeforeAmendment(line.overReceivedBeforeAmendment());
         data.setUnitCost(line.unitCost());
         data.setTotalPrice(line.totalPrice());
         data.setExpectedDate(line.expectedDate());
@@ -491,7 +509,10 @@ public class PurchaseStore {
                         line.getReceivedQuantity() != null ? line.getReceivedQuantity() : 0,
                         line.getUnitCost(),
                         line.getTotalPrice(),
-                        line.getExpectedDate()))
+                        line.getExpectedDate(),
+                        line.getOriginalQuantity() == null ? line.getQuantity() : line.getOriginalQuantity(),
+                        line.getOverReceivedBeforeAmendment(),
+                        line.getQuantity()))
                 .collect(Collectors.toList());
         return new PurchaseOrder(
                 data.getPoId(),
@@ -511,7 +532,8 @@ public class PurchaseStore {
                 data.getApprovedBy(),
                 lines,
                 data.getCreatedAt(),
-                data.getUpdatedAt());
+                data.getUpdatedAt(),
+                data.getReceiptTolerancePercent());
     }
 
     private PurchasePlan toPurchasePlanDomain(PurchasePlanDO data, List<PurchasePlanLineDO> lineDOs) {

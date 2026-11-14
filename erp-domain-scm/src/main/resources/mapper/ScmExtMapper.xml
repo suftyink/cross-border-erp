@@ -156,6 +156,7 @@
                status, last_received_at, created_at, updated_at
         FROM scm_purchase_tracking
         WHERE tenant_id = #{tenantId} AND po_id = #{poId} AND line_id = #{lineId}
+        <if test="forUpdate">FOR UPDATE</if>
     </select>
 
     <select id="selectTrackings" resultType="com.aidotnet.erp.scm.infrastructure.data.PurchaseTrackingDO">

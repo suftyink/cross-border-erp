@@ -14,8 +14,14 @@ const allPermissions = [
   'inventory:read', 'inventory:write', 'finance:read', 'finance:write',
   'customer:read', 'customer:write', 'logistics:read', 'logistics:write',
   'system:read', 'system:write', 'report:read', 'ads:read', 'ads:write',
-  'wms:receipt:write',
+  'wms:receipt:write', 'scm:supplier:tolerance:write', 'scm:purchase:amend',
 ];
+
+const permissionLabels: Record<string, string> = {
+  'wms:receipt:write': '仓储 · 确认采购收货',
+  'scm:supplier:tolerance:write': '采购 · 设置供应商超收容差',
+  'scm:purchase:amend': '采购 · 变更收齐采购单',
+};
 
 export default function RolesPage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -68,7 +74,7 @@ export default function RolesPage() {
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8, fontWeight: 500 }}>权限分配</div>
           <Transfer dataSource={Array.from(new Set([...allPermissions, ...(editingRole?.permIds ?? [])]))
-            .map((p) => ({ key: p, title: p === 'wms:receipt:write' ? '仓储 · 确认采购收货' : p }))}
+            .map((p) => ({ key: p, title: permissionLabels[p] ?? p }))}
             targetKeys={selectedPerms} onChange={(keys) => setSelectedPerms(keys as string[])} render={(item) => item.title} listStyle={{ width: 260, height: 320 }} />
         </div>
       </Modal>

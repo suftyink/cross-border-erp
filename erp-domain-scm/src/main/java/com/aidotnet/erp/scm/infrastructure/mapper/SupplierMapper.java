@@ -1,6 +1,7 @@
 package com.aidotnet.erp.scm.infrastructure.mapper;
 
 import com.aidotnet.erp.scm.infrastructure.data.SupplierDO;
+import java.math.BigDecimal;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -21,6 +22,9 @@ public interface SupplierMapper {
 
     /** 更新供应商 */
     void update(SupplierDO supplier);
+
+    int updateReceiptTolerance(@Param("tenantId") String tenantId, @Param("supplierId") String supplierId,
+                               @Param("percent") BigDecimal percent, @Param("operatorId") String operatorId);
 
     /** 按租户ID+供应商ID查询 */
     SupplierDO selectById(@Param("tenantId") String tenantId, @Param("supplierId") String supplierId);

@@ -39,7 +39,7 @@ public class PurchaseTrackingService {
 
     @Transactional
     public PurchaseTracking initTracking(String tenantId, String poId) {
-        PurchaseOrder po = purchaseStore.findPurchaseOrder(tenantId, poId)
+        PurchaseOrder po = purchaseStore.lockPurchaseOrder(tenantId, poId)
                 .orElseThrow(() -> new BizException("PO_NOT_FOUND", "purchase order not found"));
         if (po.status() != PurchaseOrderStatus.APPROVED
                 && po.status() != PurchaseOrderStatus.PARTIALLY_RECEIVED
@@ -82,10 +82,20 @@ public class PurchaseTrackingService {
      */
     @Transactional
     public PurchaseTracking recordReceipt(String tenantId, String poId, String lineId, int receivedQuantity, BigDecimal actualUnitCost) {
-        PurchaseTracking tracking = scmExtStore.findTracking(tenantId, poId, lineId)
+        return recordReceipt(tenantId, poId, lineId, receivedQuantity, actualUnitCost, true);
+    }
+
+    // 仓库确认已经按照采购单快照校验累计上限。
+    void recordWarehouseReceipt(String tenantId, String poId, String lineId, int receivedQuantity) {
+        recordReceipt(tenantId, poId, lineId, receivedQuantity, null, false);
+    }
+
+    private PurchaseTracking recordReceipt(String tenantId, String poId, String lineId, int receivedQuantity,
+                                           BigDecimal actualUnitCost, boolean reportManualOverdelivery) {
+        PurchaseTracking tracking = scmExtStore.lockTracking(tenantId, poId, lineId)
                 .orElseThrow(() -> new BizException("TRACKING_NOT_FOUND", "purchase tracking not found"));
         int newReceived = tracking.receivedQuantity() + receivedQuantity;
-        if (newReceived > tracking.orderedQuantity() + (int) (tracking.orderedQuantity() * 0.1)) {
+        if (reportManualOverdelivery && newReceived > tracking.orderedQuantity() * 11L / 10) {
             createException(
                     tenantId,
                     poId,
@@ -138,7 +148,7 @@ public class PurchaseTrackingService {
     /** 登记质损/破损数量，并生成 DAMAGED 采购异常。 */
     @Transactional
     public PurchaseTracking recordDamage(String tenantId, String poId, String lineId, int damagedQuantity, String reason) {
-        PurchaseTracking tracking = scmExtStore.findTracking(tenantId, poId, lineId)
+        PurchaseTracking tracking = scmExtStore.lockTracking(tenantId, poId, lineId)
                 .orElseThrow(() -> new BizException("TRACKING_NOT_FOUND", "purchase tracking not found"));
         createException(
                 tenantId,
@@ -180,7 +190,7 @@ public class PurchaseTrackingService {
     /** 登记供应商退回数量，回写跟单未结数量。 */
     @Transactional
     public PurchaseTracking recordReturn(String tenantId, String poId, String lineId, int returnedQuantity, String reason) {
-        PurchaseTracking tracking = scmExtStore.findTracking(tenantId, poId, lineId)
+        PurchaseTracking tracking = scmExtStore.lockTracking(tenantId, poId, lineId)
                 .orElseThrow(() -> new BizException("TRACKING_NOT_FOUND", "purchase tracking not found"));
         int newReceived = Math.max(0, tracking.receivedQuantity() - returnedQuantity);
         int newReturned = tracking.returnedQuantity() + returnedQuantity;
@@ -282,6 +292,19 @@ public class PurchaseTrackingService {
         return scmExtStore.listTrackings(tenantId, poId);
     }
 
+    void updateOrderedQuantity(String tenantId, String poId, PurchaseOrderLine line) {
+        scmExtStore.lockTracking(tenantId, poId, line.lineId()).ifPresent(tracking -> {
+            int pending = Math.max(0, line.quantity() - tracking.receivedQuantity()
+                    - tracking.damagedQuantity() - tracking.returnedQuantity());
+            scmExtStore.saveTracking(new PurchaseTracking(tracking.trackingId(), tenantId, poId, tracking.lineId(),
+                    tracking.sellerSku(), line.quantity(), tracking.receivedQuantity(), pending,
+                    tracking.damagedQuantity(), tracking.returnedQuantity(), tracking.orderedUnitCost(),
+                    tracking.actualUnitCost(), resolveStatus(line.quantity(), tracking.receivedQuantity(),
+                    tracking.damagedQuantity(), tracking.returnedQuantity(), pending), tracking.lastReceivedAt(),
+                    tracking.createdAt(), Instant.now()));
+        });
+    }
+
     public List<PurchaseException> listExceptions(String tenantId, String poId) {
         return scmExtStore.listExceptions(tenantId, poId);
     }
@@ -304,7 +327,7 @@ public class PurchaseTrackingService {
                 && exception.exceptionType() != PurchaseExceptionType.MISSING_ITEM) {
             return;
         }
-        scmExtStore.findTracking(exception.tenantId(), exception.poId(), exception.lineId()).ifPresent(tracking -> {
+        scmExtStore.lockTracking(exception.tenantId(), exception.poId(), exception.lineId()).ifPresent(tracking -> {
             PurchaseTracking updated = new PurchaseTracking(
                     tracking.trackingId(),
                     tracking.tenantId(),

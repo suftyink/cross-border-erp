@@ -263,6 +263,9 @@ export interface Supplier {
   leadTimeDays: number;
   minOrderQty: number;
   status: string;
+  contactName: string;
+  countryCode: string;
+  receiptTolerancePercent: number;
 }
 
 export interface PurchaseOrder {
@@ -275,6 +278,7 @@ export interface PurchaseOrder {
   currency: string;
   lines: PurchaseOrderItem[];
   createdAt: string;
+  receiptTolerancePercent: number;
 }
 
 export interface PurchaseOrderItem {
@@ -283,6 +287,25 @@ export interface PurchaseOrderItem {
   quantity: number;
   unitCost: number;
   receivedQuantity: number;
+  originalQuantity: number;
+  pendingQuantity: number;
+  overReceivedQuantity: number;
+  receivingLimit: number;
+}
+
+export interface PurchaseAmendmentLine {
+  amendmentId: string;
+  lineId: string;
+  previousQuantity: number;
+  revisedQuantity: number;
+  reason: string;
+  operatorId: string;
+  createdAt: string;
+}
+
+export interface PurchaseReceiptPermissions {
+  canConfigure: boolean;
+  canAmend: boolean;
 }
 
 export interface PurchaseReceiptLineInput {

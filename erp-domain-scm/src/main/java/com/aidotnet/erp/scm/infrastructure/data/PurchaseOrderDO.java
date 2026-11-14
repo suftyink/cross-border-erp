@@ -25,6 +25,10 @@ public class PurchaseOrderDO {
     private String notes;
     private String createdBy;
     private String approvedBy;
+    private BigDecimal receiptTolerancePercent;
+
+    public BigDecimal getReceiptTolerancePercent() { return receiptTolerancePercent; }
+    public void setReceiptTolerancePercent(BigDecimal percent) { this.receiptTolerancePercent = percent; }
     private Instant createdAt;
     private Instant updatedAt;
 

@@ -6,7 +6,8 @@ import { Alert, Table, Button, Modal, Form, Input, InputNumber, Select, Space, m
 import { PlusOutlined, CheckOutlined } from '@ant-design/icons';
 import { useApi } from '@/lib/hooks';
 import { scmApi } from '@/lib/api';
-import type { PurchaseOrder, Supplier } from '@/types';
+import type { PurchaseOrder, PurchaseReceiptPermissions, Supplier } from '@/types';
+import { PurchaseDetails } from './purchase-details';
 
 const { Title } = Typography;
 
@@ -19,9 +20,11 @@ const poStatusMap: Record<string, { color: string; text: string }> = {
 export default function PurchaseOrdersPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>();
   const [modalOpen, setModalOpen] = useState(false);
+  const [details, setDetails] = useState<{ order: PurchaseOrder; amend: boolean }>();
   const [form] = Form.useForm();
   const { data, error, isLoading, mutate } = useApi<PurchaseOrder[]>('/scm/api/in/v1/purchase-orders');
   const { data: suppliers } = useApi<{ supplier: Supplier }[]>(modalOpen ? '/scm/api/in/v1/suppliers' : null);
+  const { data: permissions } = useApi<PurchaseReceiptPermissions>('/scm/api/in/v1/purchase-receipt-permissions');
 
   const handleSubmit = async () => {
     try {
@@ -47,12 +50,18 @@ export default function PurchaseOrdersPage() {
     { title: '金额', dataIndex: 'totalAmount', key: 'totalAmount', render: (v: number, r: PurchaseOrder) => `${r.currency} ${v?.toFixed(2)}` },
     { title: '状态', dataIndex: 'status', key: 'status', render: (v: string) => <Badge color={poStatusMap[v]?.color || 'default'} text={poStatusMap[v]?.text || v} /> },
     { title: '累计实收', key: 'received', render: (_: unknown, r: PurchaseOrder) => r.lines.reduce((sum, line) => sum + line.receivedQuantity, 0) },
-    { title: '待收数量', key: 'pending', render: (_: unknown, r: PurchaseOrder) => r.lines.reduce((sum, line) => sum + line.quantity - line.receivedQuantity, 0) },
+    { title: '待收数量', key: 'pending', render: (_: unknown, r: PurchaseOrder) => r.lines.reduce((sum, line) => sum + line.pendingQuantity, 0) },
+    { title: '超收数量', key: 'over', render: (_: unknown, r: PurchaseOrder) => r.lines.reduce((sum, line) => sum + line.overReceivedQuantity, 0) },
+    { title: '适用容差', key: 'tolerance', render: (_: unknown, r: PurchaseOrder) =>
+      ['DRAFT', 'SUBMITTED', 'CANCELLED'].includes(r.status) ? '—' : `${r.receiptTolerancePercent}%` },
     { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => v ? new Date(v).toLocaleString() : '-' },
     { title: '操作', key: 'action', render: (_: unknown, r: PurchaseOrder) => (
-      <Space>
+      <Space wrap>
         {r.status === 'DRAFT' && <Button size="small" onClick={() => handleSubmitForApproval(r.poId)}>提交审批</Button>}
         {r.status === 'SUBMITTED' && <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => handleApprove(r.poId)}>审批</Button>}
+        <Button size="small" onClick={() => setDetails({ order: r, amend: false })}>采购明细</Button>
+        {r.status === 'RECEIVED' && permissions?.canAmend && <Button size="small"
+          onClick={() => setDetails({ order: r, amend: true })}>采购变更</Button>}
         <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(r.poId)}`}>收货记录</Link>
       </Space>
     ) },
@@ -75,6 +84,8 @@ export default function PurchaseOrdersPage() {
           dataSource={(data ?? []).filter((order) => !selectedStatus || order.status === selectedStatus)}
           pagination={{ pageSize: 20 }} />
       </Card>
+      {details && <PurchaseDetails order={details.order} amend={details.amend} onClose={() => setDetails(undefined)}
+        onSaved={() => { setDetails(undefined); void mutate(); message.success('采购变更已确认，待收数量已更新'); }} />}
       <Modal title="新建采购单" open={modalOpen} onOk={handleSubmit} onCancel={() => setModalOpen(false)} width={560}>
         <Form form={form} layout="vertical">
           <Form.Item name="supplierId" label="供应商" rules={[{ required: true }]}>

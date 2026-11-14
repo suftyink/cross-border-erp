@@ -192,7 +192,7 @@ public class ScmExtStore {
     }
 
     public PurchaseTracking saveTracking(PurchaseTracking t) {
-        PurchaseTrackingDO existing = mapper.selectTracking(t.tenantId(), t.poId(), t.lineId());
+        PurchaseTrackingDO existing = mapper.selectTracking(t.tenantId(), t.poId(), t.lineId(), false);
         PurchaseTrackingDO data = toTrackingData(t);
         if (existing == null) {
             mapper.insertTracking(data);
@@ -203,7 +203,11 @@ public class ScmExtStore {
     }
 
     public Optional<PurchaseTracking> findTracking(String tenantId, String poId, String lineId) {
-        return Optional.ofNullable(mapper.selectTracking(tenantId, poId, lineId)).map(this::toTrackingDomain);
+        return Optional.ofNullable(mapper.selectTracking(tenantId, poId, lineId, false)).map(this::toTrackingDomain);
+    }
+
+    public Optional<PurchaseTracking> lockTracking(String tenantId, String poId, String lineId) {
+        return Optional.ofNullable(mapper.selectTracking(tenantId, poId, lineId, true)).map(this::toTrackingDomain);
     }
 
     public List<PurchaseTracking> listTrackings(String tenantId, String poId) {

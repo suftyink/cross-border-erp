@@ -13,6 +13,13 @@ public class PurchaseOrderLineDO {
     private String sellerSku;
     private Integer quantity;
     private Integer receivedQuantity;
+    private Integer originalQuantity;
+    private int overReceivedBeforeAmendment;
+
+    public Integer getOriginalQuantity() { return originalQuantity; }
+    public void setOriginalQuantity(Integer originalQuantity) { this.originalQuantity = originalQuantity; }
+    public int getOverReceivedBeforeAmendment() { return overReceivedBeforeAmendment; }
+    public void setOverReceivedBeforeAmendment(int quantity) { this.overReceivedBeforeAmendment = quantity; }
     private BigDecimal unitCost;
     private BigDecimal totalPrice;
     private Instant expectedDate;

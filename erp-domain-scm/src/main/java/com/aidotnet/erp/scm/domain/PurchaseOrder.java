@@ -35,8 +35,40 @@ public record PurchaseOrder(
         String approvedBy,
         List<PurchaseOrderLine> lines,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        BigDecimal receiptTolerancePercent
 ) {
+    public PurchaseOrder {
+        boolean amended = lines.stream().anyMatch(line -> line.originalQuantity() != line.quantity());
+        BigDecimal percent = receiptTolerancePercent;
+        lines = lines.stream().map(line -> line.withReceivingLimit(percent, amended)).toList();
+    }
+
+    public PurchaseOrder(String poId, String tenantId, String supplierId, String poNumber, String currency,
+                         BigDecimal totalAmount, PurchaseOrderStatus status, String paymentTerms, String shippingTerms,
+                         String purchaseType, Instant expectedDeliveryDate, Instant actualDeliveryDate, String notes,
+                         String createdBy, String approvedBy, List<PurchaseOrderLine> lines, Instant createdAt,
+                         Instant updatedAt) {
+        this(poId, tenantId, supplierId, poNumber, currency, totalAmount, status, paymentTerms, shippingTerms,
+                purchaseType, expectedDeliveryDate, actualDeliveryDate, notes, createdBy, approvedBy, lines,
+                createdAt, updatedAt, BigDecimal.ZERO);
+    }
+
+    public PurchaseOrder approve(String approverId, BigDecimal percent) {
+        return withProgress(PurchaseOrderStatus.APPROVED, lines, totalAmount, approverId, percent);
+    }
+
+    public PurchaseOrder withProgress(PurchaseOrderStatus status, List<PurchaseOrderLine> lines, BigDecimal total) {
+        return withProgress(status, lines, total, approvedBy, receiptTolerancePercent);
+    }
+
+    private PurchaseOrder withProgress(PurchaseOrderStatus status, List<PurchaseOrderLine> lines, BigDecimal total,
+                                       String approverId, BigDecimal percent) {
+        return new PurchaseOrder(poId, tenantId, supplierId, poNumber, currency, total, status, paymentTerms,
+                shippingTerms, purchaseType, expectedDeliveryDate, actualDeliveryDate, notes, createdBy, approverId,
+                lines, createdAt, Instant.now(), percent);
+    }
+
     /** 计算采购订单总金额(所有行合计) */
     public BigDecimal calculateTotal() {
         return lines.stream()
@@ -56,8 +88,8 @@ public record PurchaseOrder(
 
     /** 计算收货完成率 */
     public double getCompletionRate() {
-        int total = lines.stream().mapToInt(PurchaseOrderLine::quantity).sum();
-        int received = lines.stream().mapToInt(PurchaseOrderLine::receivedQuantity).sum();
+        long total = lines.stream().mapToLong(PurchaseOrderLine::quantity).sum();
+        long received = lines.stream().mapToLong(line -> Math.min(line.quantity(), line.receivedQuantity())).sum();
         return total > 0 ? (double) received / total : 0.0;
     }
 }

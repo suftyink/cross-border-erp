@@ -27,10 +27,12 @@ public class ScmExtService {
 
     private final ScmExtStore extStore;
     private final PurchaseStore purchaseStore;
+    private final PurchaseService purchases;
 
-    public ScmExtService(ScmExtStore extStore, PurchaseStore purchaseStore) {
+    public ScmExtService(ScmExtStore extStore, PurchaseStore purchaseStore, PurchaseService purchases) {
         this.extStore = extStore;
         this.purchaseStore = purchaseStore;
+        this.purchases = purchases;
     }
 
     @Transactional
@@ -181,8 +183,7 @@ public class ScmExtService {
 
     @Transactional
     public List<PurchaseApproval> createApprovalFlow(String tenantId, CreateApprovalFlowCommand command) {
-        PurchaseOrder po = purchaseStore.findPurchaseOrder(tenantId, command.poId())
-                .orElseThrow(() -> new BizException("PO_NOT_FOUND", "Purchase order does not exist"));
+        PurchaseOrder po = purchases.lockPurchaseOrder(tenantId, command.poId());
         if (po.status() != PurchaseOrderStatus.SUBMITTED) {
             throw new BizException("PO_STATUS_INVALID", "Only submitted purchase orders can start approval");
         }
@@ -219,6 +220,7 @@ public class ScmExtService {
 
     @Transactional
     public PurchaseApproval approvePurchase(String tenantId, String approvalId, ApproveCommand command) {
+        PurchaseOrder po = purchases.lockPurchaseOrder(tenantId, command.poId());
         PurchaseApproval approval = extStore.findApproval(tenantId, approvalId)
                 .orElseThrow(() -> new BizException("APPROVAL_NOT_FOUND", "Approval record does not exist"));
         if (!approval.poId().equals(command.poId())) {
@@ -226,6 +228,9 @@ public class ScmExtService {
         }
         if (approval.status() != ApprovalStatus.PENDING) {
             throw new BizException("APPROVAL_STATUS_INVALID", "Approval record has already been handled");
+        }
+        if (po.status() != PurchaseOrderStatus.SUBMITTED) {
+            throw new BizException("PO_STATUS_INVALID", "Only submitted purchase orders can be approved");
         }
         validateSequentialApproval(tenantId, approval.poId(), approvalId);
         PurchaseApproval updated = new PurchaseApproval(
@@ -242,33 +247,14 @@ public class ScmExtService {
         boolean allApproved = extStore.listApprovalsByPo(tenantId, approval.poId()).stream()
                 .allMatch(existing -> existing.status() == ApprovalStatus.APPROVED);
         if (allApproved) {
-            PurchaseOrder po = purchaseStore.findPurchaseOrder(tenantId, approval.poId())
-                    .orElseThrow(() -> new BizException("PO_NOT_FOUND", "Purchase order does not exist"));
-            purchaseStore.savePurchaseOrder(new PurchaseOrder(
-                    po.poId(),
-                    po.tenantId(),
-                    po.supplierId(),
-                    po.poNumber(),
-                    po.currency(),
-                    po.totalAmount(),
-                    PurchaseOrderStatus.APPROVED,
-                    po.paymentTerms(),
-                    po.shippingTerms(),
-                    po.purchaseType(),
-                    po.expectedDeliveryDate(),
-                    po.actualDeliveryDate(),
-                    po.notes(),
-                    po.createdBy(),
-                    approval.approverId(),
-                    po.lines(),
-                    po.createdAt(),
-                    Instant.now()));
+            purchases.completeApproval(po, approval.approverId());
         }
         return updated;
     }
 
     @Transactional
     public PurchaseApproval rejectPurchase(String tenantId, String approvalId, ApproveCommand command) {
+        PurchaseOrder po = purchases.lockPurchaseOrder(tenantId, command.poId());
         PurchaseApproval approval = extStore.findApproval(tenantId, approvalId)
                 .orElseThrow(() -> new BizException("APPROVAL_NOT_FOUND", "Approval record does not exist"));
         if (!approval.poId().equals(command.poId())) {
@@ -276,6 +262,9 @@ public class ScmExtService {
         }
         if (approval.status() != ApprovalStatus.PENDING) {
             throw new BizException("APPROVAL_STATUS_INVALID", "Approval record has already been handled");
+        }
+        if (po.status() != PurchaseOrderStatus.SUBMITTED) {
+            throw new BizException("PO_STATUS_INVALID", "Only submitted purchase orders can be rejected");
         }
         validateSequentialApproval(tenantId, approval.poId(), approvalId);
         PurchaseApproval updated = new PurchaseApproval(
@@ -289,27 +278,7 @@ public class ScmExtService {
                 Instant.now(),
                 approval.createdAt());
         extStore.saveApproval(updated);
-        PurchaseOrder po = purchaseStore.findPurchaseOrder(tenantId, approval.poId())
-                .orElseThrow(() -> new BizException("PO_NOT_FOUND", "Purchase order does not exist"));
-        purchaseStore.savePurchaseOrder(new PurchaseOrder(
-                po.poId(),
-                po.tenantId(),
-                po.supplierId(),
-                po.poNumber(),
-                po.currency(),
-                po.totalAmount(),
-                PurchaseOrderStatus.DRAFT,
-                po.paymentTerms(),
-                po.shippingTerms(),
-                po.purchaseType(),
-                po.expectedDeliveryDate(),
-                po.actualDeliveryDate(),
-                po.notes(),
-                po.createdBy(),
-                po.approvedBy(),
-                po.lines(),
-                po.createdAt(),
-                Instant.now()));
+        purchaseStore.savePurchaseOrder(po.withProgress(PurchaseOrderStatus.DRAFT, po.lines(), po.totalAmount()));
         return updated;
     }
 

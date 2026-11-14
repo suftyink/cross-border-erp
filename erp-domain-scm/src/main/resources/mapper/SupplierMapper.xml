@@ -17,16 +17,23 @@
         WHERE supplier_id = #{supplierId} AND tenant_id = #{tenantId}
     </update>
 
+    <update id="updateReceiptTolerance">
+        UPDATE scm_supplier
+        SET receipt_tolerance_percent = #{percent}, receipt_tolerance_updated_by = #{operatorId},
+            receipt_tolerance_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE tenant_id = #{tenantId} AND supplier_id = #{supplierId}
+    </update>
+
     <select id="selectById" resultType="com.aidotnet.erp.scm.infrastructure.data.SupplierDO">
         SELECT supplier_id, tenant_id, name, company_name, contact_name, country_code,
-               credit_rating, lead_time_days, moq, status, created_at, updated_at
+               credit_rating, lead_time_days, moq, status, created_at, updated_at, receipt_tolerance_percent
         FROM scm_supplier
         WHERE supplier_id = #{supplierId} AND tenant_id = #{tenantId}
     </select>
 
     <select id="selectByTenant" resultType="com.aidotnet.erp.scm.infrastructure.data.SupplierDO">
         SELECT supplier_id, tenant_id, name, company_name, contact_name, country_code,
-               credit_rating, lead_time_days, moq, status, created_at, updated_at
+               credit_rating, lead_time_days, moq, status, created_at, updated_at, receipt_tolerance_percent
         FROM scm_supplier
         WHERE tenant_id = #{tenantId}
         ORDER BY created_at DESC

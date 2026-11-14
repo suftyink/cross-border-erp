@@ -1,5 +1,6 @@
 package com.aidotnet.erp.scm.infrastructure.mapper;
 
+import com.aidotnet.erp.scm.domain.PurchaseAmendmentLine;
 import com.aidotnet.erp.scm.infrastructure.data.PurchaseOrderDO;
 import com.aidotnet.erp.scm.infrastructure.data.PurchaseOrderLineDO;
 import java.util.List;
@@ -39,4 +40,9 @@ public interface PurchaseMapper {
 
     /** 按采购单ID删除行(更新时先删后插) */
     void deleteLines(@Param("poId") String poId);
+
+    void insertAmendmentLine(@Param("tenantId") String tenantId, @Param("poId") String poId,
+                             @Param("line") PurchaseAmendmentLine line);
+
+    List<PurchaseAmendmentLine> selectAmendmentLines(@Param("tenantId") String tenantId, @Param("poId") String poId);
 }

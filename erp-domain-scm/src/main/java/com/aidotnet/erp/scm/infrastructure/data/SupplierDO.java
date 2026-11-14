@@ -3,6 +3,7 @@ package com.aidotnet.erp.scm.infrastructure.data;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import java.math.BigDecimal;
 import java.time.Instant;
 
 @TableName("scm_supplier")
@@ -21,6 +22,10 @@ public class SupplierDO {
     private String status;
     private Instant createdAt;
     private Instant updatedAt;
+    private BigDecimal receiptTolerancePercent;
+
+    public BigDecimal getReceiptTolerancePercent() { return receiptTolerancePercent; }
+    public void setReceiptTolerancePercent(BigDecimal percent) { this.receiptTolerancePercent = percent; }
 
     public SupplierDO() {}
 

@@ -1,6 +1,7 @@
 package com.aidotnet.erp.scm.api;
 
 import com.aidotnet.erp.common.api.Result;
+import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.common.security.ErpUserDetails;
 import com.aidotnet.erp.common.security.RequirePermission;
 import com.aidotnet.erp.common.tenant.TenantContext;
@@ -12,12 +13,14 @@ import com.aidotnet.erp.scm.application.PurchaseReceivingService.ArrivalLine;
 import com.aidotnet.erp.scm.application.PurchaseReceivingService.Confirmation;
 import com.aidotnet.erp.scm.application.PurchaseService;
 import com.aidotnet.erp.scm.domain.PurchaseOrder;
+import com.aidotnet.erp.scm.domain.PurchaseOrderLine;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.AccessDeniedException;
@@ -82,6 +85,16 @@ public class PurchaseReceiptController {
         return Result.ok(warehouse.listReceiptMovements(currentUser(authentication).tenantId(), receiptId));
     }
 
+    @GetMapping(RECEIPTS + "/{receiptId}/purchase-order")
+    public Result<ReceiptOrderSummary> sourceOrder(@PathVariable String receiptId, Authentication authentication) {
+        String tenantId = currentUser(authentication).tenantId();
+        Receipt receipt = warehouse.findReceipt(tenantId, receiptId)
+                .orElseThrow(() -> new BizException("RECEIPT_NOT_FOUND", "收货记录不存在"));
+        PurchaseOrder order = purchases.getPurchaseOrder(tenantId, receipt.purchaseOrderId());
+        long totalOverReceived = order.lines().stream().mapToLong(PurchaseOrderLine::getOverReceivedQuantity).sum();
+        return Result.ok(new ReceiptOrderSummary(order.poNumber(), order.receiptTolerancePercent(), totalOverReceived));
+    }
+
     private Confirmation confirm(String orderId, ReceiptRequest request, Authentication authentication) {
         ErpUserDetails user = currentUser(authentication);
         return receiving.confirm(user.tenantId(), user.userId(), orderId, request.receiptId().toString(),
@@ -104,5 +117,7 @@ public class PurchaseReceiptController {
                                      @Size(max = 128) String supplierBatchNo) {}
 
     public record ReceiptWork(boolean canReceive, List<PurchaseOrder> purchaseOrders) {}
+
+    public record ReceiptOrderSummary(String poNumber, BigDecimal receiptTolerancePercent, long overReceivedQuantity) {}
 
 }

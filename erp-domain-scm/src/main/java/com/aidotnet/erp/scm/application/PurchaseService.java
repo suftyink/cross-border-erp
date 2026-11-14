@@ -24,6 +24,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -112,6 +113,15 @@ public class PurchaseService {
         return purchaseStore.listSupplierProfiles(tenantId);
     }
 
+    @Transactional
+    public SupplierProfile updateSupplierReceiptTolerance(
+            String tenantId, String supplierId, BigDecimal percent, String operatorId) {
+        if (!purchaseStore.updateSupplierReceiptTolerance(tenantId, supplierId, percent, operatorId)) {
+            throw new BizException("SUPPLIER_NOT_FOUND", "供应商不存在");
+        }
+        return getSupplierProfile(tenantId, supplierId);
+    }
+
     public SupplierProfile updateSupplier(String tenantId, String supplierId, UpdateSupplierCommand command) {
         SupplierProfile existing = getSupplierProfile(tenantId, supplierId);
         Instant now = Instant.now();
@@ -129,7 +139,8 @@ public class PurchaseService {
                 command.moq() != null ? command.moq() : existing.supplier().moq(),
                 command.status() != null ? command.status() : existing.supplier().status(),
                 existing.supplier().createdAt(),
-                now);
+                now,
+                existing.supplier().receiptTolerancePercent());
         List<SupplierContact> contacts = command.contacts() != null
                 ? buildContacts(tenantId, supplierId, command.contacts(), now)
                 : existing.contacts();
@@ -208,23 +219,39 @@ public class PurchaseService {
                 now));
     }
 
+    @Transactional
     public PurchaseOrder submit(String tenantId, String poId) {
-        PurchaseOrder po = getPurchaseOrder(tenantId, poId);
+        PurchaseOrder po = lockPurchaseOrder(tenantId, poId);
         if (po.status() != PurchaseOrderStatus.DRAFT) {
             throw new BizException("PO_STATUS_INVALID", "只有草稿采购单可以提交");
         }
         return update(po, PurchaseOrderStatus.SUBMITTED, po.lines());
     }
 
+    @Transactional
     public PurchaseOrder approve(String tenantId, String poId) {
-        PurchaseOrder po = getPurchaseOrder(tenantId, poId);
+        PurchaseOrder po = lockPurchaseOrder(tenantId, poId);
         if (po.status() != PurchaseOrderStatus.SUBMITTED) {
             throw new BizException("PO_STATUS_INVALID", "只有已提交采购单可以审批");
         }
         if (!scmExtStore.listApprovalsByPo(tenantId, poId).isEmpty()) {
             throw new BizException("PURCHASE_APPROVAL_FLOW_REQUIRED", "Purchase order must be approved through approval flow");
         }
-        return update(po, PurchaseOrderStatus.APPROVED, po.lines());
+        return completeApproval(po, po.approvedBy());
+    }
+
+    PurchaseOrder lockPurchaseOrder(String tenantId, String poId) {
+        return purchaseStore.lockPurchaseOrder(tenantId, poId)
+                .orElseThrow(() -> new BizException("PO_NOT_FOUND", "采购单不存在"));
+    }
+
+    PurchaseOrder completeApproval(PurchaseOrder po, String approverId) {
+        if (po.status() != PurchaseOrderStatus.SUBMITTED) {
+            throw new BizException("PO_STATUS_INVALID", "只有已提交采购单可以审批");
+        }
+        BigDecimal percent = purchaseStore.findSupplier(po.tenantId(), po.supplierId())
+                .map(Supplier::receiptTolerancePercent).orElse(BigDecimal.ZERO);
+        return purchaseStore.savePurchaseOrder(po.approve(approverId, percent));
     }
 
     PurchaseOrder recordWarehouseReceipt(PurchaseOrder po, List<ReceiptLine> receipts) {
@@ -234,20 +261,13 @@ public class PurchaseService {
                     .mapToLong(ReceiptLine::quantity)
                     .sum();
             long totalReceived = line.receivedQuantity() + received;
-            if (totalReceived > line.quantity()) {
-                throw new BizException("PO_RECEIVE_EXCEEDS_ORDERED", "收货数量超过采购数量");
+            if (totalReceived > line.receivingLimit()) {
+                throw new BizException("PO_RECEIVE_EXCEEDS_ORDERED",
+                        "采购明细 " + line.sellerSku() + " 的累计实收超出上限 " + line.receivingLimit());
             }
-            return new PurchaseOrderLine(
-                    line.lineId(),
-                    line.productId(),
-                    line.sellerSku(),
-                    line.quantity(),
-                    (int) totalReceived,
-                    line.unitCost(),
-                    line.totalPrice(),
-                    line.expectedDate());
+            return line.receive((int) totalReceived);
         }).toList();
-        boolean allReceived = lines.stream().allMatch(line -> line.receivedQuantity() == line.quantity());
+        boolean allReceived = lines.stream().allMatch(line -> line.getPendingQuantity() == 0);
         PurchaseOrder updated = update(
                 po,
                 allReceived ? PurchaseOrderStatus.RECEIVED : PurchaseOrderStatus.PARTIALLY_RECEIVED,
@@ -344,8 +364,9 @@ public class PurchaseService {
         return purchaseStore.listEvaluations(tenantId, supplierId);
     }
 
+    @Transactional
     public PurchaseOrder cancel(String tenantId, String poId) {
-        PurchaseOrder po = getPurchaseOrder(tenantId, poId);
+        PurchaseOrder po = lockPurchaseOrder(tenantId, poId);
         if (po.status() != PurchaseOrderStatus.DRAFT && po.status() != PurchaseOrderStatus.SUBMITTED) {
             throw new BizException("PO_STATUS_INVALID", "只有草稿或已提交采购单可以取消");
         }
@@ -419,7 +440,7 @@ public class PurchaseService {
             purchaseTrackingService.initTracking(tenantId, po.poId());
         }
         for (ReceiptLine receipt : receipts) {
-            purchaseTrackingService.recordReceipt(tenantId, po.poId(), receipt.lineId(), receipt.quantity(), null);
+            purchaseTrackingService.recordWarehouseReceipt(tenantId, po.poId(), receipt.lineId(), receipt.quantity());
         }
     }
 
@@ -440,25 +461,7 @@ public class PurchaseService {
     }
 
     private PurchaseOrder update(PurchaseOrder po, PurchaseOrderStatus status, List<PurchaseOrderLine> lines) {
-        return purchaseStore.savePurchaseOrder(new PurchaseOrder(
-                po.poId(),
-                po.tenantId(),
-                po.supplierId(),
-                po.poNumber(),
-                po.currency(),
-                po.totalAmount(),
-                status,
-                po.paymentTerms(),
-                po.shippingTerms(),
-                po.purchaseType(),
-                po.expectedDeliveryDate(),
-                po.actualDeliveryDate(),
-                po.notes(),
-                po.createdBy(),
-                po.approvedBy(),
-                lines,
-                po.createdAt(),
-                Instant.now()));
+        return purchaseStore.savePurchaseOrder(po.withProgress(status, lines, po.totalAmount()));
     }
 
     private ReplenishmentSuggestion updateSuggestion(
