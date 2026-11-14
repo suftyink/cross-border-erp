@@ -21,5 +21,8 @@ public record WarehouseLocation(
         String bin,
         boolean enabled,
         Instant createdAt,
-        Instant updatedAt
-) {}
+        Instant updatedAt,
+        Purpose purpose
+) {
+    public enum Purpose { GOOD, QUARANTINE }
+}

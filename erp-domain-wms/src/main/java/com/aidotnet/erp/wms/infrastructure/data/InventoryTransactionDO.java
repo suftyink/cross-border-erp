@@ -25,6 +25,28 @@ public class InventoryTransactionDO {
     private Integer pendingInspectionDelta;
     private Integer pendingPutawayDelta;
     private Integer quarantinedDelta;
+    private String sourceLocationId;
+    private String targetLocationId;
+    private Integer beforeLocationQuantity;
+    private Integer afterLocationQuantity;
+    private Integer beforePendingPutaway;
+    private Integer afterPendingPutaway;
+    private Integer availableDelta;
+
+    public String getSourceLocationId() { return sourceLocationId; }
+    public void setSourceLocationId(String value) { sourceLocationId = value; }
+    public String getTargetLocationId() { return targetLocationId; }
+    public void setTargetLocationId(String value) { targetLocationId = value; }
+    public Integer getBeforeLocationQuantity() { return beforeLocationQuantity; }
+    public void setBeforeLocationQuantity(Integer value) { beforeLocationQuantity = value; }
+    public Integer getAfterLocationQuantity() { return afterLocationQuantity; }
+    public void setAfterLocationQuantity(Integer value) { afterLocationQuantity = value; }
+    public Integer getBeforePendingPutaway() { return beforePendingPutaway; }
+    public void setBeforePendingPutaway(Integer value) { beforePendingPutaway = value; }
+    public Integer getAfterPendingPutaway() { return afterPendingPutaway; }
+    public void setAfterPendingPutaway(Integer value) { afterPendingPutaway = value; }
+    public Integer getAvailableDelta() { return availableDelta; }
+    public void setAvailableDelta(Integer value) { availableDelta = value; }
 
     public String getBatchNo() { return batchNo; }
     public void setBatchNo(String value) { batchNo = value; }

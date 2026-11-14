@@ -63,6 +63,7 @@ export default function PurchaseOrdersPage() {
         {r.status === 'RECEIVED' && permissions?.canAmend && <Button size="small"
           onClick={() => setDetails({ order: r, amend: true })}>采购变更</Button>}
         <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(r.poId)}`}>收货记录</Link>
+        <Link href={`/wms/inventory?purchaseOrderId=${encodeURIComponent(r.poId)}`}>批次结存</Link>
       </Space>
     ) },
   ];

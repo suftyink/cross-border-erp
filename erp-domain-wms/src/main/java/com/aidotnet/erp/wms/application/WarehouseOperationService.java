@@ -427,8 +427,13 @@ public class WarehouseOperationService {
                 .orElseThrow(() -> new BizException("OUTBOUND_PACKAGE_NOT_FOUND", "outbound package not found"));
     }
 
+    @Transactional
     public InventoryMovement moveInventory(String tenantId, MoveInventoryCommand command) {
         ensureWarehouse(tenantId, command.warehouseId());
+        inventoryStore.lockOrCreateBalance(tenantId, command.warehouseId(), command.sellerSku());
+        if (inventoryStore.locatedQuantity(tenantId, command.warehouseId(), command.sellerSku()) > 0) {
+            throw new BizException("BATCH_STOCK_OPERATION_REQUIRED", "已按库位管理的库存需要按实物批次办理");
+        }
         return orderStore.saveMovement(new InventoryMovement(
                 UUID.randomUUID().toString(),
                 tenantId,

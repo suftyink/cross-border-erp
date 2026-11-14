@@ -85,21 +85,33 @@ public class InventoryService {
                 .orElseThrow(() -> new BizException("WAREHOUSE_NOT_FOUND", "仓库不存在"));
     }
 
+    @Transactional
     public WarehouseLocation createLocation(String tenantId, CreateLocationCommand command) {
         ensureWarehouse(tenantId, command.warehouseId());
+        String code = command.locationCode().strip();
+        if (!inventoryStore.lockLocationsByCode(tenantId, command.warehouseId(), code).isEmpty()) {
+            throw new BizException("LOCATION_CODE_EXISTS", "仓库内已存在相同库位码");
+        }
         Instant now = Instant.now();
         return inventoryStore.saveLocation(new WarehouseLocation(
                 UUID.randomUUID().toString(),
                 tenantId,
                 command.warehouseId(),
-                command.locationCode(),
+                code,
                 command.zone(),
                 command.aisle(),
                 command.shelf(),
                 command.bin(),
-                true,
+                command.enabled(),
                 now,
-                now));
+                now,
+                command.purpose()));
+    }
+
+    public void updateLocationEnabled(String tenantId, String warehouseId, String locationId, boolean enabled) {
+        if (!inventoryStore.updateLocationEnabled(tenantId, warehouseId, locationId, enabled)) {
+            throw new BizException("LOCATION_NOT_FOUND", "当前仓库没有该库位");
+        }
     }
 
     public List<WarehouseLocation> listLocations(String tenantId, String warehouseId) {
@@ -376,7 +388,8 @@ public class InventoryService {
     public record CreateWarehouseCommand(String code, String name, String type, String countryCode,
                                          String address, String contactPerson, String phone) {}
 
-    public record CreateLocationCommand(String warehouseId, String locationCode, String zone, String aisle, String shelf, String bin) {}
+    public record CreateLocationCommand(String warehouseId, String locationCode, String zone, String aisle,
+                                        String shelf, String bin, WarehouseLocation.Purpose purpose, boolean enabled) {}
 
     public record StockCommand(String warehouseId, String sellerSku, int quantity,
                                String referenceType, String referenceId, String remark) {

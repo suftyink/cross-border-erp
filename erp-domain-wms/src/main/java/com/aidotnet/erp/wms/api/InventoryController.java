@@ -1,6 +1,7 @@
 package com.aidotnet.erp.wms.api;
 
 import com.aidotnet.erp.common.api.Result;
+import com.aidotnet.erp.common.security.RequirePermission;
 import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.common.tenant.TenantContext;
 import com.aidotnet.erp.wms.application.InventoryService;
@@ -18,6 +19,8 @@ import com.aidotnet.erp.wms.domain.Warehouse;
 import com.aidotnet.erp.wms.domain.WarehouseLocation;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.Positive;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -71,9 +74,20 @@ public class InventoryController {
     }
 
     @PostMapping("/warehouses/{warehouseId}/locations")
+    @RequirePermission("wms:location:write")
     public Result<WarehouseLocation> createLocation(@PathVariable String warehouseId, @Valid @RequestBody CreateLocationRequest request) {
         return Result.ok(inventoryService.createLocation(currentTenant(), new CreateLocationCommand(warehouseId,
-                request.locationCode(), request.zone(), request.aisle(), request.shelf(), request.bin())));
+                request.locationCode(), request.zone(), request.aisle(), request.shelf(), request.bin(),
+                request.purpose() == null ? WarehouseLocation.Purpose.GOOD : request.purpose(),
+                request.enabled() == null || request.enabled())));
+    }
+
+    @PatchMapping("/warehouses/{warehouseId}/locations/{locationId}/enabled")
+    @RequirePermission("wms:location:write")
+    public Result<Void> updateLocationEnabled(@PathVariable String warehouseId, @PathVariable String locationId,
+                                              @Valid @RequestBody LocationEnabledRequest request) {
+        inventoryService.updateLocationEnabled(currentTenant(), warehouseId, locationId, request.enabled());
+        return Result.ok();
     }
 
     @GetMapping("/warehouses/{warehouseId}/locations")
@@ -179,7 +193,9 @@ public class InventoryController {
                                          @NotBlank String countryCode, String address,
                                          String contactPerson, String phone) {}
 
-    public record CreateLocationRequest(@NotBlank String locationCode, String zone, String aisle, String shelf, String bin) {}
+    public record CreateLocationRequest(@NotBlank @Size(max = 128) String locationCode, String zone, String aisle,
+                                        String shelf, String bin, WarehouseLocation.Purpose purpose, Boolean enabled) {}
+    public record LocationEnabledRequest(@NotNull Boolean enabled) {}
 
     public record StockRequest(@NotBlank String warehouseId, @NotBlank String sellerSku, @Positive int quantity,
                                String referenceType, String referenceId, String remark) {}

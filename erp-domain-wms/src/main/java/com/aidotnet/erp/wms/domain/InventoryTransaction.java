@@ -29,7 +29,14 @@ public record InventoryTransaction(
         String operatorId,
         Integer pendingInspectionDelta,
         Integer pendingPutawayDelta,
-        Integer quarantinedDelta
+        Integer quarantinedDelta,
+        String sourceLocationId,
+        String targetLocationId,
+        Integer beforeLocationQuantity,
+        Integer afterLocationQuantity,
+        Integer beforePendingPutaway,
+        Integer afterPendingPutaway,
+        Integer availableDelta
 ) {
     public InventoryTransaction(String transactionId, String tenantId, String warehouseId, String sellerSku,
                                 TransactionType transactionType, int quantity, int beforeOnHand, int beforeReserved,
@@ -38,6 +45,16 @@ public record InventoryTransaction(
         this(transactionId, tenantId, warehouseId, sellerSku, transactionType, quantity, beforeOnHand,
                 beforeReserved, afterOnHand, afterReserved, referenceType, referenceId, remark, createdAt,
                 null, null, null, null, null);
+    }
+
+    public InventoryTransaction(String transactionId, String tenantId, String warehouseId, String sellerSku,
+                                TransactionType transactionType, int quantity, int beforeOnHand, int beforeReserved,
+                                int afterOnHand, int afterReserved, String referenceType, String referenceId,
+                                String remark, Instant createdAt, String batchNo, String operatorId,
+                                Integer pendingInspectionDelta, Integer pendingPutawayDelta, Integer quarantinedDelta) {
+        this(transactionId, tenantId, warehouseId, sellerSku, transactionType, quantity, beforeOnHand, beforeReserved,
+                afterOnHand, afterReserved, referenceType, referenceId, remark, createdAt, batchNo, operatorId,
+                pendingInspectionDelta, pendingPutawayDelta, quarantinedDelta, null, null, null, null, null, null, null);
     }
     /** 事务类型 */
     public enum TransactionType {
@@ -51,6 +68,7 @@ public record InventoryTransaction(
         DEDUCT,
         /** 库存调整 */
         STOCK_ADJUST,
-        QUALITY_DISPOSITION
+        QUALITY_DISPOSITION,
+        PURCHASE_PUTAWAY
     }
 }

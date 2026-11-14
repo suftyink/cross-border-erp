@@ -7,6 +7,7 @@ import com.aidotnet.erp.wms.domain.InventoryTransaction;
 import com.aidotnet.erp.wms.domain.InventoryTransactionType;
 import com.aidotnet.erp.wms.domain.PurchaseInspectionBatch;
 import com.aidotnet.erp.wms.domain.StockCheck;
+import com.aidotnet.erp.wms.domain.StockLedgerFilter;
 import com.aidotnet.erp.wms.domain.Warehouse;
 import com.aidotnet.erp.wms.domain.WarehouseLocation;
 import com.aidotnet.erp.wms.infrastructure.data.InventoryBalanceDO;
@@ -102,11 +103,19 @@ public class InventoryStore {
     }
 
     public InventoryBalance saveBalance(InventoryBalance balance) {
+        long located = locatedQuantity(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
+        if (located > 0 && balance.getAvailable() < located) {
+            throw new BizException("BATCH_STOCK_OPERATION_REQUIRED", "已按库位管理的库存需要按实物批次办理");
+        }
         inventoryMapper.ensureBalance(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
         InventoryBalanceDO data = toBalanceData(balance);
         data.setUpdatedAt(Instant.now());
         inventoryMapper.updateBalance(data);
         return balance;
+    }
+
+    public long locatedQuantity(String tenantId, String warehouseId, String sellerSku) {
+        return inventoryMapper.selectLocatedQuantity(tenantId, warehouseId, sellerSku);
     }
 
     public Optional<InventoryBalance> findBalance(String tenantId, String warehouseId, String sellerSku) {
@@ -140,8 +149,19 @@ public class InventoryStore {
 
     public WarehouseLocation saveLocation(WarehouseLocation location) {
         WarehouseLocationDO data = toLocationData(location);
-        inventoryMapper.insertLocation(data);
+        if (inventoryMapper.insertLocation(data) == 0) {
+            throw new BizException("LOCATION_CODE_EXISTS", "仓库内已存在相同库位码");
+        }
         return location;
+    }
+
+    public List<WarehouseLocation> lockLocationsByCode(String tenantId, String warehouseId, String locationCode) {
+        return inventoryMapper.lockLocationsByCode(tenantId, warehouseId, locationCode).stream()
+                .map(this::toLocationDomain).toList();
+    }
+
+    public boolean updateLocationEnabled(String tenantId, String warehouseId, String locationId, boolean enabled) {
+        return inventoryMapper.updateLocationEnabled(tenantId, warehouseId, locationId, enabled) == 1;
     }
 
     public Optional<WarehouseLocation> findLocation(String tenantId, String locationId) {
@@ -200,9 +220,23 @@ public class InventoryStore {
     }
 
     public List<InventoryTransaction> listTransactions(String tenantId, String warehouseId, String sellerSku) {
-        return inventoryMapper.selectTransactions(tenantId, warehouseId, sellerSku).stream()
+        return listTransactions(tenantId, new StockLedgerFilter(warehouseId, null, sellerSku, null, null, null));
+    }
+
+    public List<InventoryTransaction> listTransactions(String tenantId, StockLedgerFilter filter) {
+        return inventoryMapper.selectTransactions(tenantId, filter.warehouseId(), filter.sellerSku(),
+                        filter.locationId(), filter.batchNo(), filter.purchaseOrderId(), filter.documentId()).stream()
                 .map(this::toTransactionDomain)
                 .collect(Collectors.toList());
+    }
+
+    public Optional<InventoryTransaction> findTransaction(String tenantId, String transactionId) {
+        return Optional.ofNullable(inventoryMapper.selectTransaction(tenantId, transactionId))
+                .map(this::toTransactionDomain);
+    }
+
+    public boolean insertPutawayTransaction(InventoryTransaction transaction) {
+        return inventoryMapper.insertTransaction(toTransactionData(transaction)) == 1;
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -501,6 +535,8 @@ public class InventoryStore {
         data.setAisle(l.aisle());
         data.setShelf(l.shelf());
         data.setBin(l.bin());
+        data.setLocationCode(l.locationCode());
+        data.setPurpose(l.purpose());
         data.setEnabled(l.enabled());
         data.setCreatedAt(Instant.now());
         data.setUpdatedAt(Instant.now());
@@ -509,9 +545,9 @@ public class InventoryStore {
 
     private WarehouseLocation toLocationDomain(WarehouseLocationDO d) {
         return new WarehouseLocation(d.getLocationId(), d.getTenantId(), d.getWarehouseId(),
-                null, d.getZoneCode(), d.getAisle(), d.getShelf(), d.getBin(),
+                d.getLocationCode(), d.getZoneCode(), d.getAisle(), d.getShelf(), d.getBin(),
                 d.getEnabled() != null ? d.getEnabled() : true,
-                d.getCreatedAt(), d.getUpdatedAt());
+                d.getCreatedAt(), d.getUpdatedAt(), d.getPurpose());
     }
 
     private StockCheckDO toStockCheckData(StockCheck c) {
@@ -603,6 +639,13 @@ public class InventoryStore {
         data.setPendingInspectionDelta(transaction.pendingInspectionDelta());
         data.setPendingPutawayDelta(transaction.pendingPutawayDelta());
         data.setQuarantinedDelta(transaction.quarantinedDelta());
+        data.setSourceLocationId(transaction.sourceLocationId());
+        data.setTargetLocationId(transaction.targetLocationId());
+        data.setBeforeLocationQuantity(transaction.beforeLocationQuantity());
+        data.setAfterLocationQuantity(transaction.afterLocationQuantity());
+        data.setBeforePendingPutaway(transaction.beforePendingPutaway());
+        data.setAfterPendingPutaway(transaction.afterPendingPutaway());
+        data.setAvailableDelta(transaction.availableDelta());
         return data;
     }
 
@@ -622,6 +665,9 @@ public class InventoryStore {
                 data.getReferenceId(),
                 data.getRemark(),
                 data.getCreatedAt(), data.getBatchNo(), data.getOperatorId(), data.getPendingInspectionDelta(),
-                data.getPendingPutawayDelta(), data.getQuarantinedDelta());
+                data.getPendingPutawayDelta(), data.getQuarantinedDelta(),
+                data.getSourceLocationId(), data.getTargetLocationId(), data.getBeforeLocationQuantity(),
+                data.getAfterLocationQuantity(), data.getBeforePendingPutaway(), data.getAfterPendingPutaway(),
+                data.getAvailableDelta());
     }
 }

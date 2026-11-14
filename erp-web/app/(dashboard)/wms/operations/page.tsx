@@ -11,24 +11,20 @@ import { useAuthStore } from '@/lib/store';
 import type { PurchaseOrder, PurchaseReceipt, PurchaseReceiptInput, PurchaseReceiptMovement, Warehouse } from '@/types';
 import { ReceiptLabels } from './receipt-labels';
 import { InspectionDialog, InspectionWork } from './purchase-inspection';
+import { PurchasePutaway } from './purchase-putaway';
+import { newOperationId } from './operation-id';
 
 const receiptsApi = '/wms/api/in/v1/purchase-receipts';
 type PendingReceipt = { orderId: string; request: PurchaseReceiptInput };
-
-function createReceiptId() {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 15) | 64;
-  bytes[8] = (bytes[8] & 63) | 128;
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-');
-}
 
 export default function WarehouseOperationsPage() {
   return <Suspense fallback={<Typography.Text>正在加载仓储作业…</Typography.Text>}><ReceiptWork /></Suspense>;
 }
 
 function ReceiptWork() {
-  const purchaseOrderId = useSearchParams().get('purchaseOrderId');
+  const search = useSearchParams();
+  const purchaseOrderId = search.get('purchaseOrderId');
+  const sourceBatchNo = search.get('batchNo');
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder>();
   const [selectedReceipt, setSelectedReceipt] = useState<PurchaseReceipt>();
   const [inspectionBatch, setInspectionBatch] = useState<string>();
@@ -84,7 +80,7 @@ function ReceiptWork() {
 
   const confirmReceipt = (values: Omit<PurchaseReceiptInput, 'receiptId'>) => {
     if (selectedOrder) {
-      void sendReceipt({ orderId: selectedOrder.poId, request: { ...values, receiptId: createReceiptId() } });
+      void sendReceipt({ orderId: selectedOrder.poId, request: { ...values, receiptId: newOperationId() } });
     }
   };
 
@@ -109,7 +105,8 @@ function ReceiptWork() {
             ]} />
           </Card>}
           <Card title="收货记录">
-            <Table<PurchaseReceipt> rowKey="receiptId" size="small" loading={receipts.isLoading} dataSource={receipts.data ?? []} columns={[
+            <Table<PurchaseReceipt> rowKey="receiptId" size="small" loading={receipts.isLoading}
+              dataSource={(receipts.data ?? []).filter((receipt) => !sourceBatchNo || receipt.lines.some((line) => line.batchNo === sourceBatchNo))} columns={[
               { title: '收货编号', dataIndex: 'receiptId' },
               { title: '仓库', render: (_, receipt) => warehouses?.find((warehouse) => warehouse.warehouseId === receipt.warehouseId)?.name ?? receipt.warehouseId },
               { title: '实收数量', render: (_, receipt) => receipt.lines.reduce((sum, line) => sum + line.quantity, 0) },
@@ -120,6 +117,8 @@ function ReceiptWork() {
         </Space>
       ) }, { key: 'inspection', label: '质检', children: (
         <InspectionWork purchaseOrderId={purchaseOrderId} warehouses={warehouses ?? []} />
+      ) }, { key: 'putaway', label: '上架', children: (
+        <PurchasePutaway purchaseOrderId={purchaseOrderId} warehouses={warehouses ?? []} />
       ) }]} />
 
       <Modal title={`确认到货 ${selectedOrder?.poNumber ?? ''}`} open={!!selectedOrder}
@@ -175,6 +174,7 @@ function ReceiptWork() {
             { title: '内部批次', dataIndex: 'batchNo' },
             { title: '实收', dataIndex: 'quantity' },
             { title: '质检', render: (_, row) => <Button size="small" onClick={() => setInspectionBatch(row.batchNo)}>质检记录</Button> },
+            { title: '库存', render: (_, row) => <Link href={`/wms/inventory?batchNo=${encodeURIComponent(row.batchNo)}`}>批次结存</Link> },
           ]} />
           {movements.error && <Alert type="error" message="库存流水加载失败" />}
           <Table<PurchaseReceiptMovement> rowKey="batchNo" size="small" pagination={false} loading={movements.isLoading}

@@ -7,7 +7,7 @@ public record PurchaseInspection(
         String sampleOperatorId, Instant sampledAt, RecheckMethod recheckMethod,
         Integer recheckChecked, Integer recheckPassed, Integer recheckFailed, String recheckOperatorId,
         Instant recheckedAt, Integer goodQuantity, Integer defectiveQuantity,
-        String dispositionOperatorId, Instant disposedAt
+        String dispositionOperatorId, Instant disposedAt, int putawayQuantity
 ) {
     public enum RecheckMethod { RECHECK, FULL }
 

@@ -44,13 +44,18 @@
         WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId} AND seller_sku = #{sellerSku}
     </update>
 
+    <select id="selectLocatedQuantity" resultType="long">
+        SELECT COALESCE(SUM(quantity), 0) FROM wms_batch_location_balance
+        WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId} AND seller_sku = #{sellerSku}
+    </select>
+
     <sql id="balancesWithPurchaseStates">
         SELECT b.tenant_id, b.warehouse_id, b.seller_sku, b.on_hand, b.reserved, b.in_transit, b.frozen, b.updated_at,
                qc.pending_inspection, qc.pending_putaway, qc.quarantined
         FROM wms_inventory_balance b
         CROSS JOIN LATERAL (
             SELECT COALESCE(SUM(l.received_quantity) FILTER (WHERE i.disposed_at IS NULL), 0) AS pending_inspection,
-                   COALESCE(SUM(i.good_quantity), 0) AS pending_putaway,
+                   COALESCE(SUM(i.good_quantity - i.putaway_quantity), 0) AS pending_putaway,
                    COALESCE(SUM(i.defective_quantity), 0) AS quarantined
             FROM wms_inbound_order o
             JOIN wms_inbound_order_line l ON l.order_id = o.order_id
@@ -78,18 +83,39 @@
     </select>
 
     <insert id="insertLocation" parameterType="com.aidotnet.erp.wms.infrastructure.data.WarehouseLocationDO">
-        INSERT INTO wms_warehouse_location (location_id, tenant_id, warehouse_id, zone_code, aisle, rack, shelf, bin, barcode, enabled, created_at, updated_at)
-        VALUES (#{locationId}, #{tenantId}, #{warehouseId}, #{zoneCode}, #{aisle}, #{rack}, #{shelf}, #{bin}, #{barcode}, #{enabled}, #{createdAt}, #{updatedAt})
+        INSERT INTO wms_warehouse_location (location_id, tenant_id, warehouse_id, zone_code, aisle, rack, shelf, bin,
+                                             location_code, purpose, enabled, created_at, updated_at)
+        VALUES (#{locationId}, #{tenantId}, #{warehouseId}, #{zoneCode}, #{aisle}, #{rack}, #{shelf}, #{bin},
+                #{locationCode}, #{purpose}, #{enabled}, #{createdAt}, #{updatedAt})
+        ON CONFLICT (tenant_id, warehouse_id, location_code) DO NOTHING
     </insert>
 
+    <sql id="locationColumns">
+        location_id, tenant_id, warehouse_id, zone_code, aisle, rack, shelf, bin, barcode,
+        COALESCE(location_code, barcode) AS location_code, purpose, enabled, created_at, updated_at
+    </sql>
+
+    <update id="updateLocationEnabled">
+        UPDATE wms_warehouse_location SET enabled = #{enabled}, updated_at = CURRENT_TIMESTAMP
+        WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId} AND location_id = #{locationId}
+    </update>
+
+    <select id="lockLocationsByCode" resultType="com.aidotnet.erp.wms.infrastructure.data.WarehouseLocationDO">
+        SELECT <include refid="locationColumns"/>
+        FROM wms_warehouse_location
+        WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId}
+          AND COALESCE(location_code, barcode) = #{locationCode}
+        FOR UPDATE
+    </select>
+
     <select id="selectLocation" resultType="com.aidotnet.erp.wms.infrastructure.data.WarehouseLocationDO">
-        SELECT location_id, tenant_id, warehouse_id, zone_code, aisle, rack, shelf, bin, barcode, enabled, created_at, updated_at
+        SELECT <include refid="locationColumns"/>
         FROM wms_warehouse_location
         WHERE tenant_id = #{tenantId} AND location_id = #{locationId}
     </select>
 
     <select id="selectLocations" resultType="com.aidotnet.erp.wms.infrastructure.data.WarehouseLocationDO">
-        SELECT location_id, tenant_id, warehouse_id, zone_code, aisle, rack, shelf, bin, barcode, enabled, created_at, updated_at
+        SELECT <include refid="locationColumns"/>
         FROM wms_warehouse_location
         WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId}
         ORDER BY zone_code, aisle, rack, shelf, bin
@@ -163,28 +189,59 @@
             transaction_id, tenant_id, warehouse_id, seller_sku, transaction_type, quantity,
             before_on_hand, before_reserved, after_on_hand, after_reserved,
             reference_type, reference_id, remark, created_at, batch_no, operator_id,
-            pending_inspection_delta, pending_putaway_delta, quarantined_delta
+            pending_inspection_delta, pending_putaway_delta, quarantined_delta,
+            source_location_id, target_location_id, before_location_quantity, after_location_quantity,
+            before_pending_putaway, after_pending_putaway, available_delta
         )
         VALUES (
             #{transactionId}, #{tenantId}, #{warehouseId}, #{sellerSku}, #{transactionType}, #{quantity},
             #{beforeOnHand}, #{beforeReserved}, #{afterOnHand}, #{afterReserved},
             #{referenceType}, #{referenceId}, #{remark}, #{createdAt}, #{batchNo}, #{operatorId},
-            #{pendingInspectionDelta}, #{pendingPutawayDelta}, #{quarantinedDelta}
+            #{pendingInspectionDelta}, #{pendingPutawayDelta}, #{quarantinedDelta},
+            #{sourceLocationId}, #{targetLocationId}, #{beforeLocationQuantity}, #{afterLocationQuantity},
+            #{beforePendingPutaway}, #{afterPendingPutaway}, #{availableDelta}
         )
+        <if test="transactionType == 'PURCHASE_PUTAWAY'">
+            ON CONFLICT (transaction_id) DO NOTHING
+        </if>
     </insert>
 
-    <select id="selectTransactions" resultType="com.aidotnet.erp.wms.infrastructure.data.InventoryTransactionDO">
-        SELECT transaction_id, tenant_id, warehouse_id, seller_sku, transaction_type, quantity,
+    <sql id="transactionColumns">
+        transaction_id, tenant_id, warehouse_id, seller_sku, transaction_type, quantity,
                before_on_hand, before_reserved, after_on_hand, after_reserved,
                reference_type, reference_id, remark, created_at, batch_no, operator_id,
-               pending_inspection_delta, pending_putaway_delta, quarantined_delta
-        FROM wms_inventory_transaction
+               pending_inspection_delta, pending_putaway_delta, quarantined_delta,
+               source_location_id, target_location_id, before_location_quantity, after_location_quantity,
+               before_pending_putaway, after_pending_putaway, available_delta
+    </sql>
+
+    <select id="selectTransaction" resultType="com.aidotnet.erp.wms.infrastructure.data.InventoryTransactionDO">
+        SELECT <include refid="transactionColumns"/> FROM wms_inventory_transaction
+        WHERE tenant_id = #{tenantId} AND transaction_id = #{transactionId}
+    </select>
+
+    <select id="selectTransactions" resultType="com.aidotnet.erp.wms.infrastructure.data.InventoryTransactionDO">
+        SELECT <include refid="transactionColumns"/>
+        FROM wms_inventory_transaction t
         WHERE tenant_id = #{tenantId}
         <if test="warehouseId != null and warehouseId != ''">
             AND warehouse_id = #{warehouseId}
         </if>
         <if test="sellerSku != null and sellerSku != ''">
             AND seller_sku = #{sellerSku}
+        </if>
+        <if test="locationId != null">
+            AND (source_location_id = #{locationId} OR target_location_id = #{locationId})
+        </if>
+        <if test="batchNo != null">AND batch_no = #{batchNo}</if>
+        <if test="documentId != null">AND reference_id = #{documentId}</if>
+        <if test="purchaseOrderId != null">
+            AND EXISTS (
+                SELECT 1 FROM wms_inbound_order o
+                JOIN wms_inbound_order_line l ON l.order_id = o.order_id
+                WHERE o.tenant_id = t.tenant_id AND o.reference_type = 'PURCHASE_RECEIPT'
+                  AND o.reference_id = #{purchaseOrderId} AND l.batch_no = t.batch_no
+            )
         </if>
         ORDER BY created_at DESC, transaction_id DESC
     </select>

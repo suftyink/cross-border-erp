@@ -28,6 +28,9 @@ class PurchaseInspectionApiTests {
     private static final String ORDERS = "/scm/api/in/v1/purchase-orders";
     private static final String QUALITY = "wms:inspection:write";
     private static final String RECEIVE = "wms:receipt:write";
+    private static final String PUTAWAY = "wms:putaway:write";
+    private static final String PUTAWAYS = "/wms/api/in/v1/purchase-putaways";
+    private static final String LEDGER = "/wms/api/in/v1/inventory-ledger";
 
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper mapper;
@@ -170,6 +173,96 @@ class PurchaseInspectionApiTests {
                 {"code":"QC","name":"Quality Warehouse","countryCode":"US"}
                 """))).path("warehouseId").asText();
         return new Fixture(tenant.tenant(), warehouse, po);
+    }
+
+    @Test
+    void splitPutawayTracksAvailableStockAndLedgerByLocation() throws Exception {
+        Fixture f = fixture(100);
+        String batch = receive(f, """
+                [{"lineId":"L1","quantity":100,"supplierBatchNo":"S01"}]
+                """).at("/lines/0/batchNo").asText();
+        String a1 = location(f, f.warehouse(), "A-01", "GOOD", true);
+        String a2 = location(f, f.warehouse(), "A-02", "GOOD", true);
+        location(f, f.warehouse(), "OFF", "GOOD", false);
+        location(f, f.warehouse(), "QC", "QUARANTINE", true);
+        String otherWarehouse = data(call(f, post("/wms/api/in/v1/warehouses").content("""
+                {"code":"OTHER","name":"Other Warehouse","countryCode":"US"}
+                """))).path("warehouseId").asText();
+        location(f, otherWarehouse, "OTHER-01", "GOOD", true);
+
+        sample(f, batch, "sample", 20, 19, 1).andExpect(status().isOk());
+        call(f, post(INSPECTIONS + "/{batch}/recheck", batch).content("""
+                {"method":"FULL","checkedQuantity":100,"passedQuantity":97,"failedQuantity":3}
+                """), QUALITY).andExpect(status().isOk());
+        disposition(f, batch, 97, 3, QUALITY).andExpect(status().isOk());
+        call(f, get(PUTAWAYS + "/work").param("purchaseOrderId", f.purchaseOrder()), PUTAWAY)
+                .andExpect(jsonPath("$.data.batches[0].batchNo").value(batch))
+                .andExpect(jsonPath("$.data.batches[0].pendingPutaway").value(97));
+
+        String requestId = UUID.randomUUID().toString();
+        putaway(f, batch, requestId, "A-01", 60, RECEIVE).andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        for (String code : new String[]{"OTHER-01", "OFF", "QC"}) {
+            putaway(f, batch, requestId, code, 1, PUTAWAY).andExpect(status().isBadRequest());
+        }
+        inventory(f).andExpect(jsonPath("$.data[0].available").value(0));
+        putaway(f, batch, requestId, "A-01", 60, PUTAWAY).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.afterPendingPutaway").value(37))
+                .andExpect(jsonPath("$.data.targetLocationId").value(a1));
+        putaway(f, batch, requestId, "A-01", 60, PUTAWAY).andExpect(status().isOk());
+        putaway(f, batch, requestId, "A-02", 37, PUTAWAY).andExpect(status().isBadRequest());
+        call(f, get(PUTAWAYS + "/{batch}/recommendation", batch), PUTAWAY)
+                .andExpect(jsonPath("$.data.locationCode").value("A-01"));
+        inventory(f).andExpect(jsonPath("$.data[0].onHand").value(100))
+                .andExpect(jsonPath("$.data[0].pendingPutaway").value(37))
+                .andExpect(jsonPath("$.data[0].available").value(60));
+        call(f, post("/wms/api/in/v1/inventory/reserve").content("""
+                {"warehouseId":"%s","sellerSku":"MUG-01","quantity":1}
+                """.formatted(f.warehouse())))
+                .andExpect(jsonPath("$.code").value("BATCH_STOCK_OPERATION_REQUIRED"));
+        call(f, post("/wms/api/in/v1/movements").content("""
+                {"warehouseId":"%s","sellerSku":"MUG-01","fromLocationId":"%s","toLocationId":"%s","quantity":1}
+                """.formatted(f.warehouse(), a1, a2)))
+                .andExpect(jsonPath("$.code").value("BATCH_STOCK_OPERATION_REQUIRED"));
+        putaway(f, batch, UUID.randomUUID().toString(), "A-02", 38, PUTAWAY).andExpect(status().isBadRequest());
+        String second = UUID.randomUUID().toString();
+        putaway(f, batch, second, "A-02", 37, PUTAWAY).andExpect(status().isOk());
+        inventory(f).andExpect(jsonPath("$.data[0].onHand").value(100))
+                .andExpect(jsonPath("$.data[0].pendingPutaway").value(0))
+                .andExpect(jsonPath("$.data[0].available").value(97))
+                .andExpect(jsonPath("$.data[0].quarantined").value(3));
+
+        call(f, get(LEDGER + "/balances").param("warehouseId", f.warehouse()).param("purchaseOrderId", f.purchaseOrder())
+                        .param("sellerSku", "MUG-01").param("batchNo", batch))
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[?(@.locationCode == 'A-01')].quantity").value(org.hamcrest.Matchers.contains(60)))
+                .andExpect(jsonPath("$.data[?(@.locationCode == 'A-02')].quantity").value(org.hamcrest.Matchers.contains(37)))
+                .andExpect(jsonPath("$.data[?(@.status == 'QUARANTINED')].quantity").value(org.hamcrest.Matchers.contains(3)));
+        call(f, get(LEDGER + "/transactions").param("warehouseId", f.warehouse()).param("locationId", a2)
+                        .param("batchNo", batch).param("documentId", second))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].referenceId").value(second))
+                .andExpect(jsonPath("$.data[0].beforeOnHand").value(100))
+                .andExpect(jsonPath("$.data[0].afterOnHand").value(100))
+                .andExpect(jsonPath("$.data[0].pendingPutawayDelta").value(-37))
+                .andExpect(jsonPath("$.data[0].afterLocationQuantity").value(37));
+        call(f, patch("/wms/api/in/v1/warehouses/{wh}/locations/{id}/enabled", f.warehouse(), a2)
+                .content("{\"enabled\":false}"), "wms:location:write").andExpect(status().isOk());
+        call(f, get(PUTAWAYS + "/{batch}/recommendation", batch), PUTAWAY)
+                .andExpect(jsonPath("$.data.locationCode").value("A-01"));
+    }
+
+    private String location(Fixture f, String warehouseId, String code, String purpose, boolean enabled) throws Exception {
+        return data(call(f, post("/wms/api/in/v1/warehouses/{id}/locations", warehouseId)
+                .content("""
+                        {"locationCode":"%s","purpose":"%s","enabled":%s}
+                        """.formatted(code, purpose, enabled)), "wms:location:write")).path("locationId").asText();
+    }
+
+    private ResultActions putaway(Fixture f, String batch, String requestId, String locationCode, int quantity,
+                                  String permission) throws Exception {
+        return call(f, post(PUTAWAYS + "/{batch}", batch).content("""
+                {"requestId":"%s","locationCode":"%s","quantity":%d}
+                """.formatted(requestId, locationCode, quantity)), permission);
     }
 
     private JsonNode receive(Fixture fixture, String lines) throws Exception {

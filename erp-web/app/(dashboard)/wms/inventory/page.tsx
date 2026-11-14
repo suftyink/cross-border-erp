@@ -1,112 +1,170 @@
 'use client';
 
-import { useState } from 'react';
-import { Table, Card, Typography, Tag, Badge, Select, Space, Button, Input, Modal, Form, InputNumber, message } from 'antd';
-import { SearchOutlined, WarningOutlined, PlusOutlined } from '@ant-design/icons';
-import { usePageApi } from '@/lib/hooks';
-import { wmsApi } from '@/lib/api';
-import type { InventoryBalance, PageParams } from '@/types';
+import { Suspense, useState } from 'react';
+import { Alert, Button, Card, Input, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { useApi } from '@/lib/hooks';
+import type { InventoryBalance, Warehouse, WarehouseLocation } from '@/types';
 
-const { Title } = Typography;
+const wms = '/wms/api/in/v1';
+const stockLabels: Record<string, string> = {
+  PENDING_INSPECTION: '待检', PENDING_PUTAWAY: '待上架', QUARANTINED: '隔离', AVAILABLE: '可用',
+};
+const movementLabels: Record<string, string> = {
+  RECEIVE: '入库', RESERVE: '预占', RELEASE: '释放预占', DEDUCT: '出库', STOCK_ADJUST: '调整',
+  QUALITY_DISPOSITION: '质检判定', PURCHASE_PUTAWAY: '确认上架',
+};
+
+interface BatchBalance {
+  batchNo: string;
+  receiptId: string;
+  purchaseOrderId: string;
+  warehouseId: string;
+  sellerSku: string;
+  supplierBatchNo?: string;
+  locationId?: string;
+  locationCode?: string;
+  status: string;
+  quantity: number;
+}
+
+interface Movement {
+  transactionId: string;
+  warehouseId: string;
+  sellerSku: string;
+  transactionType: string;
+  referenceId?: string;
+  batchNo?: string;
+  operatorId?: string;
+  quantity: number;
+  createdAt: string;
+  sourceLocationId?: string;
+  targetLocationId?: string;
+  beforeLocationQuantity?: number;
+  afterLocationQuantity?: number;
+  beforePendingPutaway?: number;
+  afterPendingPutaway?: number;
+  beforeOnHand: number;
+  afterOnHand: number;
+  pendingInspectionDelta?: number;
+  pendingPutawayDelta?: number;
+  quarantinedDelta?: number;
+  availableDelta?: number;
+  remark?: string;
+}
 
 export default function InventoryPage() {
-  const [params, setParams] = useState<PageParams & Record<string, unknown>>({ page: 1, size: 20 });
-  const [adjustOpen, setAdjustOpen] = useState(false);
-  const [adjustSku, setAdjustSku] = useState<InventoryBalance | null>(null);
-  const [adjustForm] = Form.useForm();
-  const { data, mutate } = usePageApi<InventoryBalance>('/wms/api/in/v1/inventory', params);
+  return <Suspense fallback={<Typography.Text>正在加载库存台账…</Typography.Text>}><InventoryLedger /></Suspense>;
+}
 
-  const handleAdjust = async () => {
-    try {
-      const values = await adjustForm.validateFields();
-      await wmsApi.adjustInventory({
-        skuId: adjustSku!.skuId,
-        warehouseId: adjustSku!.warehouseId,
-        quantity: values.quantity,
-        reason: values.reason,
-      });
-      message.success('库存调整成功');
-      setAdjustOpen(false);
-      mutate();
-    } catch { message.error('调整失败'); }
-  };
+function InventoryLedger() {
+  const search = useSearchParams();
+  const purchaseOrderId = search.get('purchaseOrderId');
+  const [warehouseId, setWarehouse] = useState(search.get('warehouseId') ?? undefined);
+  const [locationId, setLocation] = useState<string>();
+  const [sellerSku, setSku] = useState(search.get('sellerSku') ?? search.get('sku') ?? search.get('keyword') ?? '');
+  const [batchNo, setBatch] = useState(search.get('batchNo') ?? '');
+  const [documentId, setDocument] = useState('');
+  const [tab, setTab] = useState(search.has('batchNo') || purchaseOrderId ? 'batch' : 'warehouse');
+  const warehouses = useApi<Warehouse[]>(`${wms}/warehouses`);
+  const activeWarehouse = warehouseId ?? warehouses.data?.[0]?.warehouseId;
+  const locations = useApi<WarehouseLocation[]>(activeWarehouse ? `${wms}/warehouses/${activeWarehouse}/locations` : null);
+  const filters = new URLSearchParams();
+  if (warehouseId) filters.set('warehouseId', warehouseId);
+  if (locationId) filters.set('locationId', locationId);
+  if (sellerSku.trim()) filters.set('sellerSku', sellerSku.trim());
+  if (batchNo.trim()) filters.set('batchNo', batchNo.trim());
+  if (purchaseOrderId) filters.set('purchaseOrderId', purchaseOrderId);
+  const query = filters.toString();
+  if (documentId.trim()) filters.set('documentId', documentId.trim());
+  const balances = useApi<BatchBalance[]>(tab === 'batch' ? `${wms}/inventory-ledger/balances?${query}` : null);
+  const transactions = useApi<Movement[]>(tab === 'movements' ? `${wms}/inventory-ledger/transactions?${filters}` : null);
+  const summary = useApi<InventoryBalance[]>(tab === 'warehouse' && activeWarehouse
+    ? `${wms}/warehouses/${activeWarehouse}/inventory` : null);
+  const warehouseLabel = (id: string) => warehouses.data?.find((item) => item.warehouseId === id)?.name ?? id;
+  const locationLabel = (id?: string, code?: string) => id
+    ? locations.data?.find((item) => item.locationId === id)?.locationCode ?? code ?? id : '未入位';
 
-  const columns = [
-    { title: 'Seller SKU', dataIndex: 'sellerSku', key: 'sellerSku', render: (v: string) => (
-      <a href={`/pdm/products?sku=${v}`}>{v}</a>
-    )},
-    { title: '仓库', dataIndex: 'warehouseId', key: 'warehouseId', render: (v: string) => (
-      <a href={`/wms/warehouses?id=${v}`}>{v}</a>
-    )},
-    { title: '可用库存', dataIndex: 'available', key: 'available',
-      render: (v: number) => <span style={{ color: v > 20 ? '#52c41a' : v > 0 ? '#faad14' : '#ff4d4f', fontWeight: 600 }}>{v}</span>,
-    },
-    { title: '预留库存', dataIndex: 'reserved', key: 'reserved', render: (v: number) => <Tag color="orange">{v}</Tag> },
-    { title: '在途库存', dataIndex: 'inTransit', key: 'inTransit', render: (v: number) => <Tag color="blue">{v}</Tag> },
-    { title: '冻结库存', dataIndex: 'frozen', key: 'frozen', render: (v: number) => <Tag color="red">{v}</Tag> },
-    { title: '库存状态', key: 'status', render: (_: unknown, r: InventoryBalance) => {
-      if (r.available <= 0) return <Badge status="error" text="缺货" />;
-      if (r.available <= 20) return <Badge status="warning" text="低库存" />;
-      return <Badge status="success" text="正常" />;
-    }},
-    { title: '操作', key: 'action', render: (_: unknown, r: InventoryBalance) => (
-      <Space>
-        <Button type="link" size="small" onClick={() => {
-          setAdjustSku(r);
-          adjustForm.resetFields();
-          setAdjustOpen(true);
-        }}>调整</Button>
-        <Button type="link" size="small" onClick={() => {
-          window.location.href = `/fba/inventory?sku=${r.sellerSku}`;
-        }}>FBA库存</Button>
-        <Button type="link" size="small" onClick={() => {
-          window.location.href = `/scm/purchase-orders?sku=${r.sellerSku}`;
-        }}>采购单</Button>
+  return <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+    <Typography.Title level={4}>库存台账</Typography.Title>
+    {purchaseOrderId && <Space wrap>
+      <Typography.Text>采购单关联批次</Typography.Text>
+      <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(purchaseOrderId)}`}>查看收货记录</Link>
+      <Link href="/wms/inventory">查看全部库存</Link>
+    </Space>}
+    <Card>
+      <Space wrap>
+        <Select aria-label="仓库" placeholder={tab === 'warehouse' ? '选择仓库' : '全部仓库'} allowClear={tab !== 'warehouse'}
+          value={tab === 'warehouse' ? activeWarehouse : warehouseId} style={{ width: 200 }}
+          options={(warehouses.data ?? []).map((item) => ({ label: item.name, value: item.warehouseId }))}
+          onChange={(value) => { setWarehouse(value); setLocation(undefined); }} />
+        {tab !== 'warehouse' && <Select aria-label="库位" placeholder="全部库位" allowClear disabled={!warehouseId}
+          value={locationId} style={{ width: 160 }} onChange={setLocation}
+          options={(locations.data ?? []).filter((item) => item.locationCode)
+            .map((item) => ({ label: item.locationCode, value: item.locationId }))} />}
+        <Input aria-label="SKU" placeholder="SKU" value={sellerSku} allowClear onChange={(event) => setSku(event.target.value)} />
+        {tab !== 'warehouse' && <Input aria-label="收货批次" placeholder="收货批次" value={batchNo} allowClear
+          onChange={(event) => setBatch(event.target.value)} />}
+        {tab === 'movements' && <Input aria-label="来源单据号" placeholder="来源单据号" value={documentId} allowClear
+          onChange={(event) => setDocument(event.target.value)} />}
       </Space>
-    )},
-  ];
+      {(warehouses.error || locations.error || summary.error || balances.error || transactions.error)
+        && <Alert showIcon type="error" message="库存数据加载失败，请刷新重试" />}
+      <Tabs activeKey={tab} onChange={setTab} items={[
+        { key: 'warehouse', label: '仓库汇总', children: <Table<InventoryBalance> rowKey="sellerSku" size="small"
+          loading={summary.isLoading} dataSource={(summary.data ?? []).filter((item) => !sellerSku.trim() || item.sellerSku === sellerSku.trim())}
+          columns={[
+            { title: 'SKU', dataIndex: 'sellerSku' }, { title: '在手', dataIndex: 'onHand' },
+            { title: '待检', dataIndex: 'pendingInspection' }, { title: '待上架', dataIndex: 'pendingPutaway' },
+            { title: '隔离', dataIndex: 'quarantined' }, { title: '可用', dataIndex: 'available' },
+            { title: '预占', dataIndex: 'reserved' }, { title: '冻结', dataIndex: 'frozen' }, { title: '在途', dataIndex: 'inTransit' },
+          ]} /> },
+        { key: 'batch', label: '库位与批次', children: <Table<BatchBalance> size="small" scroll={{ x: 'max-content' }}
+          rowKey={(item) => `${item.batchNo}/${item.locationId ?? item.status}`}
+          loading={balances.isLoading} dataSource={balances.data ?? []} columns={[
+            { title: '仓库', render: (_, item) => warehouseLabel(item.warehouseId) },
+            { title: '库位', render: (_, item) => locationLabel(item.locationId, item.locationCode) },
+            { title: 'SKU', dataIndex: 'sellerSku' }, { title: '收货批次', dataIndex: 'batchNo' },
+            { title: '供应商批号', dataIndex: 'supplierBatchNo' },
+            { title: '库存状态', render: (_, item) => <Tag>{stockLabels[item.status] ?? item.status}</Tag> },
+            { title: '结存', dataIndex: 'quantity' },
+            { title: '来源', render: (_, item) => <Link
+              href={`/wms/operations?purchaseOrderId=${encodeURIComponent(item.purchaseOrderId)}`}>收货记录</Link> },
+          ]} /> },
+        { key: 'movements', label: '库存流水', children: <Table<Movement> size="small" rowKey="transactionId"
+          loading={transactions.isLoading} dataSource={transactions.data ?? []} scroll={{ x: 'max-content' }} columns={[
+            { title: '时间', render: (_, item) => new Date(item.createdAt).toLocaleString() },
+            { title: '作业', render: (_, item) => movementLabels[item.transactionType] ?? item.transactionType },
+            { title: '来源单据号', render: (_, item) => item.batchNo
+              ? <Link href={`/wms/operations?batchNo=${encodeURIComponent(item.batchNo)}`}>{item.referenceId ?? item.batchNo}</Link>
+              : item.referenceId ?? '—' },
+            { title: '仓库', render: (_, item) => warehouseLabel(item.warehouseId) },
+            { title: 'SKU', dataIndex: 'sellerSku' }, { title: '收货批次', render: (_, item) => item.batchNo
+              ? <Button type="link" onClick={() => { setBatch(item.batchNo ?? ''); setTab('batch'); }}>{item.batchNo}</Button> : '—' },
+            { title: '原库位', render: (_, item) => item.sourceLocationId ? locationLabel(item.sourceLocationId)
+              : item.transactionType === 'PURCHASE_PUTAWAY' ? '待上架区（未入位）' : '—' },
+            { title: '目标库位', render: (_, item) => item.targetLocationId
+              ? locationLabel(item.targetLocationId, item.remark) : '—' },
+            { title: '仓库在手', render: (_, item) => `${item.beforeOnHand} → ${item.afterOnHand}` },
+            { title: '库位结存', render: (_, item) => item.afterLocationQuantity == null ? '—'
+              : `${item.beforeLocationQuantity} → ${item.afterLocationQuantity}` },
+            { title: '批次待上架', render: (_, item) => item.afterPendingPutaway == null ? '—'
+              : `${item.beforePendingPutaway} → ${item.afterPendingPutaway}` },
+            { title: '状态变化', render: (_, item) => formatDeltas(item) },
+            { title: '操作人', dataIndex: 'operatorId' },
+          ]} /> },
+      ]} />
+    </Card>
+  </Space>;
+}
 
-  return (
-    <div>
-      <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <Title level={4} style={{ margin: 0 }}>库存台账</Title>
-          <Space>
-            <Input placeholder="搜索SKU" prefix={<SearchOutlined />} allowClear style={{ width: 220 }}
-              onChange={(e) => setParams({ ...params, keyword: e.target.value || undefined })} />
-            <Select placeholder="选择仓库" allowClear style={{ width: 180 }
-            } onChange={(v) => setParams({ ...params, warehouseId: v })} />
-            <Select placeholder="库存状态" allowClear style={{ width: 120 }}
-              options={[{ value: 'LOW', label: '低库存' }, { value: 'OUT', label: '缺货' }, { value: 'NORMAL', label: '正常' }]}
-              onChange={(v) => setParams({ ...params, stockStatus: v })} />
-          </Space>
-        </div>
-        <Table
-          rowKey={(r: InventoryBalance) => `${r.skuId}-${r.warehouseId}`}
-          columns={columns}
-          dataSource={data?.list || []}
-          scroll={{ x: 1000 }}
-          pagination={{
-            current: params.page,
-            pageSize: params.size,
-            total: data?.total || 0,
-            onChange: (page, size) => setParams({ ...params, page, size }),
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条`,
-          }}
-        />
-      </Card>
 
-      <Modal title={`库存调整 - ${adjustSku?.sellerSku || ''}`} open={adjustOpen} onOk={handleAdjust} onCancel={() => setAdjustOpen(false)} width={480}>
-        <Form form={adjustForm} layout="vertical">
-          <Form.Item name="quantity" label="调整数量(正数增加/负数减少)" rules={[{ required: true }]}>
-            <InputNumber style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="reason" label="调整原因" rules={[{ required: true }]}>
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
-      </Modal>
-    </div>
-  );
+function formatDeltas(item: Movement) {
+  const changes = [
+    ['待检', item.pendingInspectionDelta], ['待上架', item.pendingPutawayDelta],
+    ['隔离', item.quarantinedDelta], ['可用', item.availableDelta],
+  ] as const;
+  return changes.filter(([, quantity]) => quantity).map(([name, quantity]) =>
+    `${name} ${quantity! > 0 ? '+' : ''}${quantity}`).join(' · ') || '—';
 }

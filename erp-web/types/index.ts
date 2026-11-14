@@ -224,6 +224,18 @@ export interface InventoryBalance {
   reserved: number;
   inTransit: number;
   frozen: number;
+  onHand: number;
+  pendingInspection: number;
+  pendingPutaway: number;
+  quarantined: number;
+}
+
+export interface WarehouseLocation {
+  locationId: string;
+  warehouseId: string;
+  locationCode?: string;
+  enabled: boolean;
+  purpose: 'GOOD' | 'QUARANTINE';
 }
 
 export interface InventoryTransaction {

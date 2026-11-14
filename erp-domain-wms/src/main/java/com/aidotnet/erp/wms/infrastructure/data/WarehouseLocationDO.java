@@ -3,6 +3,7 @@ package com.aidotnet.erp.wms.infrastructure.data;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.aidotnet.erp.wms.domain.WarehouseLocation;
 import java.time.Instant;
 
 @TableName("wms_warehouse_location")
@@ -18,6 +19,8 @@ public class WarehouseLocationDO {
     private String shelf;
     private String bin;
     private String barcode;
+    private String locationCode;
+    private WarehouseLocation.Purpose purpose;
     private Boolean enabled;
     private Instant createdAt;
     private Instant updatedAt;
@@ -42,6 +45,10 @@ public class WarehouseLocationDO {
     public void setBin(String bin) { this.bin = bin; }
     public String getBarcode() { return barcode; }
     public void setBarcode(String barcode) { this.barcode = barcode; }
+    public String getLocationCode() { return locationCode; }
+    public void setLocationCode(String locationCode) { this.locationCode = locationCode; }
+    public WarehouseLocation.Purpose getPurpose() { return purpose; }
+    public void setPurpose(WarehouseLocation.Purpose purpose) { this.purpose = purpose; }
     public Boolean getEnabled() { return enabled; }
     public void setEnabled(Boolean enabled) { this.enabled = enabled; }
     public Instant getCreatedAt() { return createdAt; }

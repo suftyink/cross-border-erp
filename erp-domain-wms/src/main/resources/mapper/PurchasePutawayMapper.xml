@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.PurchasePutawayMapper">
+    <select id="locationQuantity" resultType="java.lang.Integer">
+        SELECT quantity FROM wms_batch_location_balance
+        WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo} AND location_id = #{locationId}
+    </select>
+
+    <insert id="addToLocation">
+        INSERT INTO wms_batch_location_balance(tenant_id, warehouse_id, location_id, batch_no, seller_sku, quantity)
+        VALUES (#{tenantId}, #{batch.warehouseId}, #{locationId}, #{batch.batchNo}, #{batch.sellerSku}, #{quantity})
+        ON CONFLICT (tenant_id, batch_no, location_id)
+        DO UPDATE SET quantity = wms_batch_location_balance.quantity + EXCLUDED.quantity
+    </insert>
+
+    <update id="recordPutaway">
+        UPDATE wms_purchase_inspection SET putaway_quantity = putaway_quantity + #{quantity}
+        WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo}
+    </update>
+
+    <select id="balances" resultType="com.aidotnet.erp.wms.domain.BatchStock">
+        SELECT l.batch_no, o.order_id, o.reference_id, o.warehouse_id, l.seller_sku, l.supplier_batch_no,
+               o.created_at, s.location_id, s.location_code, s.status, s.quantity
+        FROM wms_inbound_order o
+        JOIN wms_inbound_order_line l ON l.order_id = o.order_id
+        LEFT JOIN wms_purchase_inspection i ON i.tenant_id = o.tenant_id AND i.batch_no = l.batch_no
+        CROSS JOIN LATERAL (
+            SELECT NULL::varchar AS location_id, NULL::varchar AS location_code, 'PENDING_PUTAWAY' AS status,
+                   i.good_quantity - i.putaway_quantity AS quantity
+            WHERE i.disposed_at IS NOT NULL
+            <if test="!pendingOnly">
+                UNION ALL
+                SELECT NULL, NULL, 'PENDING_INSPECTION', l.received_quantity WHERE i.disposed_at IS NULL
+                UNION ALL
+                SELECT NULL, NULL, 'QUARANTINED', i.defective_quantity WHERE i.disposed_at IS NOT NULL
+                UNION ALL
+                SELECT b.location_id, COALESCE(p.location_code, p.barcode), 'AVAILABLE', b.quantity
+                FROM wms_batch_location_balance b
+                JOIN wms_warehouse_location p ON p.location_id = b.location_id AND p.tenant_id = b.tenant_id
+                WHERE b.tenant_id = o.tenant_id AND b.batch_no = l.batch_no
+            </if>
+        ) s
+        WHERE o.tenant_id = #{tenantId} AND o.reference_type = 'PURCHASE_RECEIPT'
+          AND o.status = 'COMPLETED' AND l.batch_no IS NOT NULL AND s.quantity &gt; 0
+        <if test="filter.warehouseId != null">AND o.warehouse_id = #{filter.warehouseId}</if>
+        <if test="filter.purchaseOrderId != null">AND o.reference_id = #{filter.purchaseOrderId}</if>
+        <if test="filter.locationId != null">AND s.location_id = #{filter.locationId}</if>
+        <if test="filter.sellerSku != null">AND l.seller_sku = #{filter.sellerSku}</if>
+        <if test="filter.batchNo != null">AND l.batch_no = #{filter.batchNo}</if>
+        ORDER BY o.created_at, l.batch_no, s.status, s.location_code
+    </select>
+
+    <select id="recommendLocation" resultType="string">
+        SELECT COALESCE(l.location_code, l.barcode)
+        FROM wms_inventory_transaction t
+        JOIN wms_warehouse_location l ON l.tenant_id = t.tenant_id AND l.location_id = t.target_location_id
+        WHERE t.tenant_id = #{tenantId} AND t.warehouse_id = #{warehouseId} AND t.seller_sku = #{sellerSku}
+          AND t.transaction_type = 'PURCHASE_PUTAWAY' AND l.enabled AND l.purpose = 'GOOD'
+          AND COALESCE(l.location_code, l.barcode) IS NOT NULL
+        ORDER BY t.created_at DESC, t.id DESC
+        LIMIT 1
+    </select>
+</mapper>

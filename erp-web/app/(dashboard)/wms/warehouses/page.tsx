@@ -3,18 +3,19 @@
 import { useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, Tag, Space, message, Card, Typography, Switch } from 'antd';
 import { PlusOutlined, EditOutlined } from '@ant-design/icons';
-import { usePageApi } from '@/lib/hooks';
+import { useApi } from '@/lib/hooks';
 import { wmsApi } from '@/lib/api';
-import type { Warehouse, PageParams } from '@/types';
+import type { Warehouse } from '@/types';
+import { WarehouseLocations } from './warehouse-locations';
 
 const { Title } = Typography;
 
 export default function WarehousesPage() {
-  const [params, setParams] = useState<PageParams & Record<string, unknown>>({ page: 1, size: 20 });
   const [modalOpen, setModalOpen] = useState(false);
+  const [locationWarehouse, setLocationWarehouse] = useState<Warehouse>();
   const [editing, setEditing] = useState<Warehouse | null>(null);
   const [form] = Form.useForm();
-  const { data, mutate } = usePageApi<Warehouse>('/wms/api/in/v1/warehouses', params);
+  const { data, mutate, isLoading } = useApi<Warehouse[]>('/wms/api/in/v1/warehouses');
 
   const handleCreate = () => { setEditing(null); form.resetFields(); setModalOpen(true); };
   const handleEdit = (record: Warehouse) => { setEditing(record); form.setFieldsValue(record); setModalOpen(true); };
@@ -47,9 +48,11 @@ export default function WarehousesPage() {
         <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建仓库</Button>
       </div>
       <Card style={{ borderRadius: 8 }}>
-        <Table rowKey="warehouseId" columns={columns} dataSource={data?.list || []} size="middle"
-          pagination={{ current: params.page, pageSize: params.size, total: data?.total || 0, onChange: (page, size) => setParams({ ...params, page, size }) }} />
+        <Table rowKey="warehouseId" columns={[...columns, { title: '库位', key: 'locations',
+          render: (_: unknown, warehouse: Warehouse) => <Button onClick={() => setLocationWarehouse(warehouse)}>库位管理</Button>,
+        }]} dataSource={data ?? []} loading={isLoading} size="middle" pagination={{ pageSize: 20 }} />
       </Card>
+      {locationWarehouse && <WarehouseLocations warehouse={locationWarehouse} onClose={() => setLocationWarehouse(undefined)} />}
       <Modal title={editing ? '编辑仓库' : '新建仓库'} open={modalOpen} onOk={handleSubmit} onCancel={() => setModalOpen(false)} width={520}>
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="仓库名称" rules={[{ required: true }]}><Input /></Form.Item>

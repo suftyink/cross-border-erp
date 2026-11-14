@@ -132,7 +132,8 @@ public class PurchaseInspectionService {
         boolean disposed = inspection != null && inspection.disposedAt() != null;
         return new Detail(batch, inspection == null ? null : inspection.inspectionId(),
                 inspection == null ? null : inspection.sample(), inspection == null ? null : inspection.recheck(),
-                disposed ? 0 : batch.receivedQuantity(), disposed ? inspection.goodQuantity() : 0,
+                disposed ? 0 : batch.receivedQuantity(),
+                disposed ? inspection.goodQuantity() - inspection.putawayQuantity() : 0,
                 disposed ? inspection.defectiveQuantity() : 0, disposed ? inspection.dispositionOperatorId() : null,
                 disposed ? inspection.disposedAt() : null);
     }

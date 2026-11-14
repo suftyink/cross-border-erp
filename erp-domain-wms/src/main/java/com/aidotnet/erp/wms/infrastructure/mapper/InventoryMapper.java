@@ -47,6 +47,9 @@ public interface InventoryMapper {
     /** 更新库存余额 */
     void updateBalance(InventoryBalanceDO balance);
 
+    long selectLocatedQuantity(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
+                               @Param("sellerSku") String sellerSku);
+
     /** 按租户+仓库+SKU查询库存余额 */
     InventoryBalanceDO selectBalance(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
                                      @Param("sellerSku") String sellerSku);
@@ -60,7 +63,13 @@ public interface InventoryMapper {
     // ---- 库位 ----
 
     /** 新增库位 */
-    void insertLocation(WarehouseLocationDO location);
+    int insertLocation(WarehouseLocationDO location);
+
+    List<WarehouseLocationDO> lockLocationsByCode(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
+                                                   @Param("locationCode") String locationCode);
+
+    int updateLocationEnabled(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
+                              @Param("locationId") String locationId, @Param("enabled") boolean enabled);
 
     /** 按租户+库位ID查询 */
     WarehouseLocationDO selectLocation(@Param("tenantId") String tenantId, @Param("locationId") String locationId);
@@ -102,10 +111,17 @@ public interface InventoryMapper {
     // ---- 事务 ----
 
     /** 新增库存事务 */
-    void insertTransaction(InventoryTransactionDO transaction);
+    int insertTransaction(InventoryTransactionDO transaction);
+
+    InventoryTransactionDO selectTransaction(@Param("tenantId") String tenantId,
+                                              @Param("transactionId") String transactionId);
 
     /** 按仓库+SKU查询事务列表 */
     List<InventoryTransactionDO> selectTransactions(@Param("tenantId") String tenantId,
                                                     @Param("warehouseId") String warehouseId,
-                                                    @Param("sellerSku") String sellerSku);
+                                                    @Param("sellerSku") String sellerSku,
+                                                    @Param("locationId") String locationId,
+                                                    @Param("batchNo") String batchNo,
+                                                    @Param("purchaseOrderId") String purchaseOrderId,
+                                                    @Param("documentId") String documentId);
 }
