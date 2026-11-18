@@ -8,6 +8,8 @@ import com.aidotnet.erp.common.tenant.TenantContext;
 import com.aidotnet.erp.common.wms.PurchaseReceiptOperations;
 import com.aidotnet.erp.common.wms.PurchaseReceiptOperations.Receipt;
 import com.aidotnet.erp.common.wms.PurchaseReceiptOperations.ReceiptMovement;
+import com.aidotnet.erp.common.wms.PurchaseSupplierReturns;
+import com.aidotnet.erp.common.wms.PurchaseSupplierReturns.SupplierReturn;
 import com.aidotnet.erp.scm.application.PurchaseReceivingService;
 import com.aidotnet.erp.scm.application.PurchaseReceivingService.ArrivalLine;
 import com.aidotnet.erp.scm.application.PurchaseReceivingService.Confirmation;
@@ -41,12 +43,14 @@ public class PurchaseReceiptController {
     private final PurchaseReceivingService receiving;
     private final PurchaseService purchases;
     private final PurchaseReceiptOperations warehouse;
+    private final PurchaseSupplierReturns supplierReturns;
 
     public PurchaseReceiptController(PurchaseReceivingService receiving, PurchaseService purchases,
-                                     PurchaseReceiptOperations warehouse) {
+                                     PurchaseReceiptOperations warehouse, PurchaseSupplierReturns supplierReturns) {
         this.receiving = receiving;
         this.purchases = purchases;
         this.warehouse = warehouse;
+        this.supplierReturns = supplierReturns;
     }
 
     @GetMapping(RECEIPTS + "/work")
@@ -93,6 +97,13 @@ public class PurchaseReceiptController {
         PurchaseOrder order = purchases.getPurchaseOrder(tenantId, receipt.purchaseOrderId());
         long totalOverReceived = order.lines().stream().mapToLong(PurchaseOrderLine::getOverReceivedQuantity).sum();
         return Result.ok(new ReceiptOrderSummary(order.poNumber(), order.receiptTolerancePercent(), totalOverReceived));
+    }
+
+    @GetMapping("/scm/api/in/v1/purchase-orders/{orderId}/supplier-returns")
+    public Result<List<SupplierReturn>> supplierReturns(@PathVariable String orderId, Authentication authentication) {
+        String tenantId = currentUser(authentication).tenantId();
+        purchases.getPurchaseOrder(tenantId, orderId);
+        return Result.ok(supplierReturns.listByPurchaseOrder(tenantId, orderId));
     }
 
     private Confirmation confirm(String orderId, ReceiptRequest request, Authentication authentication) {

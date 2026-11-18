@@ -45,8 +45,18 @@
     </update>
 
     <select id="selectLocatedQuantity" resultType="long">
-        SELECT COALESCE(SUM(quantity), 0) FROM wms_batch_location_balance
-        WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId} AND seller_sku = #{sellerSku}
+        SELECT COALESCE(SUM(b.quantity), 0) FROM wms_batch_location_balance b
+        JOIN wms_warehouse_location l ON l.tenant_id = b.tenant_id AND l.location_id = b.location_id
+        WHERE b.tenant_id = #{tenantId} AND b.warehouse_id = #{warehouseId} AND b.seller_sku = #{sellerSku}
+          AND l.purpose = 'GOOD'
+    </select>
+
+    <select id="hasBatchLocations" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM wms_batch_location_balance
+            WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId} AND seller_sku = #{sellerSku}
+              AND quantity &gt; 0
+        )
     </select>
 
     <sql id="balancesWithPurchaseStates">
@@ -56,7 +66,7 @@
         CROSS JOIN LATERAL (
             SELECT COALESCE(SUM(l.received_quantity) FILTER (WHERE i.disposed_at IS NULL), 0) AS pending_inspection,
                    COALESCE(SUM(i.good_quantity - i.putaway_quantity), 0) AS pending_putaway,
-                   COALESCE(SUM(i.defective_quantity), 0) AS quarantined
+                   COALESCE(SUM(i.defective_quantity - i.returned_quantity), 0) AS quarantined
             FROM wms_inbound_order o
             JOIN wms_inbound_order_line l ON l.order_id = o.order_id
             LEFT JOIN wms_purchase_inspection i ON i.tenant_id = o.tenant_id AND i.batch_no = l.batch_no
@@ -201,7 +211,7 @@
             #{sourceLocationId}, #{targetLocationId}, #{beforeLocationQuantity}, #{afterLocationQuantity},
             #{beforePendingPutaway}, #{afterPendingPutaway}, #{availableDelta}
         )
-        <if test="transactionType == 'PURCHASE_PUTAWAY'">
+        <if test="transactionType == 'PURCHASE_PUTAWAY' or transactionType == 'PURCHASE_QUARANTINE'">
             ON CONFLICT (transaction_id) DO NOTHING
         </if>
     </insert>

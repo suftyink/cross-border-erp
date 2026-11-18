@@ -69,6 +69,8 @@ public record InventoryTransaction(
         /** 库存调整 */
         STOCK_ADJUST,
         QUALITY_DISPOSITION,
-        PURCHASE_PUTAWAY
+        PURCHASE_PUTAWAY,
+        PURCHASE_QUARANTINE,
+        PURCHASE_SUPPLIER_RETURN
     }
 }

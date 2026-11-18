@@ -16,6 +16,7 @@ const allPermissions = [
   'system:read', 'system:write', 'report:read', 'ads:read', 'ads:write',
   'wms:receipt:write', 'wms:inspection:write', 'scm:supplier:tolerance:write', 'scm:purchase:amend',
   'wms:putaway:write', 'wms:location:write',
+  'wms:quarantine:write', 'scm:purchase-return:write', 'wms:purchase-return:ship',
 ];
 
 const permissionLabels: Record<string, string> = {
@@ -23,6 +24,9 @@ const permissionLabels: Record<string, string> = {
   'wms:inspection:write': '仓储 · 采购批次质检',
   'wms:putaway:write': '仓储 · 确认良品上架',
   'wms:location:write': '仓储 · 管理库位',
+  'wms:quarantine:write': '仓储 · 确认隔离入位',
+  'scm:purchase-return:write': '采购 · 发起退供',
+  'wms:purchase-return:ship': '仓储 · 确认退供出库',
   'scm:supplier:tolerance:write': '采购 · 设置供应商超收容差',
   'scm:purchase:amend': '采购 · 变更收齐采购单',
 };

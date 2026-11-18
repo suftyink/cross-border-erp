@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.PurchaseSupplierReturnMapper">
+    <select id="pendingIsolation" resultType="com.aidotnet.erp.wms.domain.BatchStock">
+        SELECT l.batch_no, o.order_id, o.reference_id, o.warehouse_id, l.seller_sku, l.supplier_batch_no,
+               o.created_at, NULL::varchar AS location_id, NULL::varchar AS location_code,
+               'QUARANTINED' AS status, i.defective_quantity - i.isolated_quantity AS quantity
+        FROM wms_inbound_order o
+        JOIN wms_inbound_order_line l ON l.order_id = o.order_id
+        JOIN wms_purchase_inspection i ON i.tenant_id = o.tenant_id AND i.batch_no = l.batch_no
+        WHERE o.tenant_id = #{tenantId} AND o.reference_type = 'PURCHASE_RECEIPT'
+          AND o.status = 'COMPLETED' AND i.disposed_at IS NOT NULL AND i.defective_quantity &gt; i.isolated_quantity
+        <if test="purchaseOrderId != null">AND o.reference_id = #{purchaseOrderId}</if>
+        ORDER BY o.created_at, l.batch_no
+    </select>
+
+    <update id="recordIsolation">
+        UPDATE wms_purchase_inspection SET isolated_quantity = isolated_quantity + #{quantity}
+        WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo}
+    </update>
+
+    <sql id="returnColumns">
+        return_id, receipt_id, purchase_order_id, purchase_order_line_id, batch_no, warehouse_id,
+        location_id, location_code, seller_sku, requested_quantity, reason, requested_by, requested_at,
+        shipped_quantity, shipped_by, shipped_at
+    </sql>
+
+    <select id="pendingReturnQuantity" resultType="long">
+        SELECT COALESCE(SUM(requested_quantity), 0) FROM wms_purchase_supplier_return
+        WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo} AND location_id = #{locationId} AND shipped_at IS NULL
+    </select>
+
+    <insert id="insertReturn">
+        INSERT INTO wms_purchase_supplier_return (tenant_id, <include refid="returnColumns"/>)
+        VALUES (#{tenantId}, #{document.returnId}, #{document.receiptId}, #{document.purchaseOrderId},
+                #{document.purchaseOrderLineId}, #{document.batchNo}, #{document.warehouseId}, #{document.locationId},
+                #{document.locationCode}, #{document.sellerSku}, #{document.requestedQuantity}, #{document.reason},
+                #{document.requestedBy}, #{document.requestedAt}, NULL, NULL, NULL)
+        ON CONFLICT (tenant_id, return_id) DO NOTHING
+    </insert>
+
+    <select id="findReturn" resultType="com.aidotnet.erp.common.wms.PurchaseSupplierReturns$SupplierReturn">
+        SELECT <include refid="returnColumns"/> FROM wms_purchase_supplier_return
+        WHERE tenant_id = #{tenantId} AND return_id = #{returnId}
+        <if test="lock">FOR UPDATE</if>
+    </select>
+
+    <select id="listReturns" resultType="com.aidotnet.erp.common.wms.PurchaseSupplierReturns$SupplierReturn">
+        SELECT <include refid="returnColumns"/> FROM wms_purchase_supplier_return
+        WHERE tenant_id = #{tenantId}
+        <if test="purchaseOrderId != null">AND purchase_order_id = #{purchaseOrderId}</if>
+        ORDER BY requested_at DESC, return_id
+    </select>
+
+    <update id="shipReturn">
+        UPDATE wms_purchase_supplier_return
+        SET shipped_quantity = #{quantity}, shipped_by = #{operatorId}, shipped_at = #{shippedAt}
+        WHERE tenant_id = #{tenantId} AND return_id = #{returnId}
+    </update>
+
+    <update id="recordShippedQuantity">
+        UPDATE wms_purchase_inspection SET returned_quantity = returned_quantity + #{quantity}
+        WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo}
+    </update>
+
+    <update id="deductLocation">
+        UPDATE wms_batch_location_balance SET quantity = quantity - #{quantity}
+        WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo} AND location_id = #{locationId}
+          AND quantity &gt;= #{quantity}
+    </update>
+</mapper>

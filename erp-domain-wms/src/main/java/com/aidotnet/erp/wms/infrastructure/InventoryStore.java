@@ -118,6 +118,10 @@ public class InventoryStore {
         return inventoryMapper.selectLocatedQuantity(tenantId, warehouseId, sellerSku);
     }
 
+    public boolean hasBatchLocations(String tenantId, String warehouseId, String sellerSku) {
+        return inventoryMapper.hasBatchLocations(tenantId, warehouseId, sellerSku);
+    }
+
     public Optional<InventoryBalance> findBalance(String tenantId, String warehouseId, String sellerSku) {
         return Optional.ofNullable(inventoryMapper.selectBalance(tenantId, warehouseId, sellerSku))
                 .map(this::toBalanceDomain);
@@ -235,7 +239,7 @@ public class InventoryStore {
                 .map(this::toTransactionDomain);
     }
 
-    public boolean insertPutawayTransaction(InventoryTransaction transaction) {
+    public boolean insertBatchPlacementTransaction(InventoryTransaction transaction) {
         return inventoryMapper.insertTransaction(toTransactionData(transaction)) == 1;
     }
 

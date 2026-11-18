@@ -38,7 +38,8 @@
     <select id="selectInspection" resultType="com.aidotnet.erp.wms.domain.PurchaseInspection">
         SELECT inspection_id, sample_checked, sample_passed, sample_failed, sample_operator_id, sampled_at,
                recheck_method, recheck_checked, recheck_passed, recheck_failed, recheck_operator_id, rechecked_at,
-               good_quantity, defective_quantity, disposition_operator_id, disposed_at, putaway_quantity
+               good_quantity, defective_quantity, disposition_operator_id, disposed_at, putaway_quantity,
+               isolated_quantity, returned_quantity
         FROM wms_purchase_inspection WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo}
     </select>
 

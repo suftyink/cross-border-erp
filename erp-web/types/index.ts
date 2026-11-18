@@ -350,6 +350,21 @@ export interface PurchaseReceiptMovement {
   receivedAt: string;
 }
 
+export interface SupplierReturn {
+  returnId: string;
+  receiptId: string;
+  purchaseOrderId: string;
+  purchaseOrderLineId: string;
+  batchNo: string;
+  warehouseId: string;
+  locationId: string;
+  locationCode: string;
+  sellerSku: string;
+  requestedQuantity: number;
+  shippedQuantity: number | null;
+  shippedAt: string | null;
+}
+
 export interface PurchasePlan {
   planId: string;
   tenantId: string;

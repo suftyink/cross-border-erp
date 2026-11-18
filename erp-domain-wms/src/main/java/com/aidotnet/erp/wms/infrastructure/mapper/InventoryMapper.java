@@ -50,6 +50,9 @@ public interface InventoryMapper {
     long selectLocatedQuantity(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
                                @Param("sellerSku") String sellerSku);
 
+    boolean hasBatchLocations(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
+                              @Param("sellerSku") String sellerSku);
+
     /** 按租户+仓库+SKU查询库存余额 */
     InventoryBalanceDO selectBalance(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
                                      @Param("sellerSku") String sellerSku);

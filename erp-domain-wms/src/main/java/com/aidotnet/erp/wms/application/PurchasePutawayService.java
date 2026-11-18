@@ -88,7 +88,7 @@ public class PurchasePutawayService {
                 balance.onHand(), balance.reserved(), balance.onHand(), balance.reserved(), REFERENCE_TYPE,
                 command.requestId(), locationCode, now, batchNo, operatorId, 0, -quantity, 0,
                 null, location.locationId(), before, before + quantity, pending, pending - quantity, quantity);
-        if (!inventory.insertPutawayTransaction(transaction)) {
+        if (!inventory.insertBatchPlacementTransaction(transaction)) {
             throw conflict();
         }
         putaways.addToLocation(tenantId, batch, location.locationId(), quantity);

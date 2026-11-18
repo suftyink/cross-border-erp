@@ -22,6 +22,10 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @ErpAppTest
 @AutoConfigureMockMvc
 class PurchaseInspectionApiTests {
+    private static final String RETURNS = "/wms/api/in/v1/purchase-returns";
+    private static final String ISOLATE = "wms:quarantine:write";
+    private static final String REQUEST_RETURN = "scm:purchase-return:write";
+    private static final String SHIP_RETURN = "wms:purchase-return:ship";
 
     private static final String INSPECTIONS = "/wms/api/in/v1/purchase-inspections";
     private static final String RECEIPTS = "/wms/api/in/v1/purchase-receipts";
@@ -249,6 +253,85 @@ class PurchaseInspectionApiTests {
                 .content("{\"enabled\":false}"), "wms:location:write").andExpect(status().isOk());
         call(f, get(PUTAWAYS + "/{batch}/recommendation", batch), PUTAWAY)
                 .andExpect(jsonPath("$.data.locationCode").value("A-01"));
+    }
+
+    @Test
+    void returnsOnlyActualDefectivesFromTheirQuarantineLocationBeforeGoodPutaway() throws Exception {
+        Fixture f = fixture(110);
+        JsonNode receipt = receive(f, """
+                [{"lineId":"L1","quantity":100}]
+                """);
+        String receiptId = receipt.path("receiptId").asText();
+        String batch = receipt.at("/lines/0/batchNo").asText();
+        String quarantine = location(f, f.warehouse(), "Q-01", "QUARANTINE", true);
+        location(f, f.warehouse(), "A-01", "GOOD", true);
+        sample(f, batch, "sample", 20, 19, 1).andExpect(status().isOk());
+        call(f, post(INSPECTIONS + "/{batch}/recheck", batch).content("""
+                {"method":"FULL","checkedQuantity":100,"passedQuantity":97,"failedQuantity":3}
+                """), QUALITY).andExpect(status().isOk());
+        disposition(f, batch, 97, 3, QUALITY).andExpect(status().isOk());
+        call(f, get(RETURNS + "/work").param("purchaseOrderId", f.purchaseOrder()), ISOLATE)
+                .andExpect(jsonPath("$.data.pendingIsolation[0].quantity").value(3));
+
+        String isolation = UUID.randomUUID().toString();
+        call(f, post(RETURNS + "/batches/{batch}/isolate", batch).content("""
+                {"requestId":"%s","locationCode":"A-01","quantity":3}
+                """.formatted(isolation)), ISOLATE).andExpect(status().isBadRequest());
+        for (int attempt = 0; attempt < 2; attempt++) {
+            call(f, post(RETURNS + "/batches/{batch}/isolate", batch).content("""
+                    {"requestId":"%s","locationCode":"Q-01","quantity":3}
+                    """.formatted(isolation)), ISOLATE).andExpect(status().isOk());
+        }
+        inventory(f).andExpect(jsonPath("$.data[0].onHand").value(100))
+                .andExpect(jsonPath("$.data[0].available").value(0));
+        call(f, get(LEDGER + "/balances").param("locationId", quarantine).param("batchNo", batch))
+                .andExpect(jsonPath("$.data[0].status").value("QUARANTINED"))
+                .andExpect(jsonPath("$.data[0].quantity").value(3));
+        call(f, post("/wms/api/in/v1/movements").content("""
+                {"warehouseId":"%s","sellerSku":"MUG-01","fromLocationId":"%s","toLocationId":"%s","quantity":1}
+                """.formatted(f.warehouse(), quarantine, quarantine)))
+                .andExpect(jsonPath("$.code").value("BATCH_STOCK_OPERATION_REQUIRED"));
+
+        String returnId = UUID.randomUUID().toString();
+        String body = """
+                {"returnId":"%s","batchNo":"%s","locationId":"%s","quantity":3,"reason":"Damaged"}
+                """.formatted(returnId, batch, quarantine);
+        call(f, post(RETURNS + "/receipts/{receipt}", receiptId).content(body), ISOLATE)
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            call(f, post(RETURNS + "/receipts/{receipt}", receiptId).content(body), REQUEST_RETURN)
+                    .andExpect(jsonPath("$.data.purchaseOrderLineId").value("L1"))
+                    .andExpect(jsonPath("$.data.locationCode").value("Q-01"));
+        }
+        call(f, post(RETURNS + "/receipts/{receipt}", receiptId)
+                    .content(body.replace(returnId, UUID.randomUUID().toString())), REQUEST_RETURN)
+                .andExpect(status().isBadRequest());
+        inventory(f).andExpect(jsonPath("$.data[0].onHand").value(100));
+        call(f, post(RETURNS + "/{id}/ship", returnId).content("{\"quantity\":3}"), REQUEST_RETURN)
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        call(f, post(RETURNS + "/{id}/ship", returnId).content("{\"quantity\":4}"), SHIP_RETURN)
+                .andExpect(status().isBadRequest());
+        call(new Fixture("other-return-tenant", null, null), post(RETURNS + "/{id}/ship", returnId)
+                .content("{\"quantity\":3}"), SHIP_RETURN).andExpect(status().isBadRequest());
+        for (int attempt = 0; attempt < 2; attempt++) {
+            call(f, post(RETURNS + "/{id}/ship", returnId).content("{\"quantity\":3}"), SHIP_RETURN)
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.shippedQuantity").value(3));
+        }
+        inventory(f).andExpect(jsonPath("$.data[0].onHand").value(97))
+                .andExpect(jsonPath("$.data[0].quarantined").value(0))
+                .andExpect(jsonPath("$.data[0].pendingPutaway").value(97))
+                .andExpect(jsonPath("$.data[0].available").value(0));
+        call(f, get(LEDGER + "/balances").param("locationId", quarantine).param("batchNo", batch))
+                .andExpect(jsonPath("$.data").isEmpty());
+        call(f, get(ORDERS + "/{po}", f.purchaseOrder()))
+                .andExpect(jsonPath("$.data.lines[0].pendingQuantity").value(10));
+        call(f, get(ORDERS + "/{po}/supplier-returns", f.purchaseOrder()))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].shippedQuantity").value(3));
+        call(f, get(LEDGER + "/transactions").param("documentId", returnId).param("batchNo", batch))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].sourceLocationId").value(quarantine))
+                .andExpect(jsonPath("$.data[0].afterOnHand").value(97));
     }
 
     private String location(Fixture f, String warehouseId, String code, String purpose, boolean enabled) throws Exception {

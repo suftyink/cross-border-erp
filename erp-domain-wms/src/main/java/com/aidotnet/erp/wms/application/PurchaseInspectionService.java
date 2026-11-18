@@ -134,7 +134,8 @@ public class PurchaseInspectionService {
                 inspection == null ? null : inspection.sample(), inspection == null ? null : inspection.recheck(),
                 disposed ? 0 : batch.receivedQuantity(),
                 disposed ? inspection.goodQuantity() - inspection.putawayQuantity() : 0,
-                disposed ? inspection.defectiveQuantity() : 0, disposed ? inspection.dispositionOperatorId() : null,
+                disposed ? inspection.defectiveQuantity() - inspection.returnedQuantity() : 0,
+                disposed ? inspection.dispositionOperatorId() : null,
                 disposed ? inspection.disposedAt() : null);
     }
 

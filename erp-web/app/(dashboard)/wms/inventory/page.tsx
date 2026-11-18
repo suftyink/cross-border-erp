@@ -14,6 +14,7 @@ const stockLabels: Record<string, string> = {
 const movementLabels: Record<string, string> = {
   RECEIVE: '入库', RESERVE: '预占', RELEASE: '释放预占', DEDUCT: '出库', STOCK_ADJUST: '调整',
   QUALITY_DISPOSITION: '质检判定', PURCHASE_PUTAWAY: '确认上架',
+  PURCHASE_QUARANTINE: '隔离入位', PURCHASE_SUPPLIER_RETURN: '退供出库',
 };
 
 interface BatchBalance {
@@ -65,8 +66,9 @@ function InventoryLedger() {
   const [locationId, setLocation] = useState<string>();
   const [sellerSku, setSku] = useState(search.get('sellerSku') ?? search.get('sku') ?? search.get('keyword') ?? '');
   const [batchNo, setBatch] = useState(search.get('batchNo') ?? '');
-  const [documentId, setDocument] = useState('');
-  const [tab, setTab] = useState(search.has('batchNo') || purchaseOrderId ? 'batch' : 'warehouse');
+  const [documentId, setDocument] = useState(search.get('documentId') ?? '');
+  const [tab, setTab] = useState(search.get('tab') === 'movements' ? 'movements'
+    : search.has('batchNo') || purchaseOrderId ? 'batch' : 'warehouse');
   const warehouses = useApi<Warehouse[]>(`${wms}/warehouses`);
   const activeWarehouse = warehouseId ?? warehouses.data?.[0]?.warehouseId;
   const locations = useApi<WarehouseLocation[]>(activeWarehouse ? `${wms}/warehouses/${activeWarehouse}/locations` : null);
@@ -136,14 +138,18 @@ function InventoryLedger() {
           loading={transactions.isLoading} dataSource={transactions.data ?? []} scroll={{ x: 'max-content' }} columns={[
             { title: '时间', render: (_, item) => new Date(item.createdAt).toLocaleString() },
             { title: '作业', render: (_, item) => movementLabels[item.transactionType] ?? item.transactionType },
-            { title: '来源单据号', render: (_, item) => item.batchNo
+            { title: '来源单据号', render: (_, item) => item.transactionType === 'PURCHASE_SUPPLIER_RETURN' && item.referenceId
+              ? <Link href={`/wms/operations?returnId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>
+              : item.batchNo
               ? <Link href={`/wms/operations?batchNo=${encodeURIComponent(item.batchNo)}`}>{item.referenceId ?? item.batchNo}</Link>
               : item.referenceId ?? '—' },
             { title: '仓库', render: (_, item) => warehouseLabel(item.warehouseId) },
             { title: 'SKU', dataIndex: 'sellerSku' }, { title: '收货批次', render: (_, item) => item.batchNo
               ? <Button type="link" onClick={() => { setBatch(item.batchNo ?? ''); setTab('batch'); }}>{item.batchNo}</Button> : '—' },
-            { title: '原库位', render: (_, item) => item.sourceLocationId ? locationLabel(item.sourceLocationId)
-              : item.transactionType === 'PURCHASE_PUTAWAY' ? '待上架区（未入位）' : '—' },
+            { title: '原库位', render: (_, item) => item.sourceLocationId ? locationLabel(item.sourceLocationId,
+              item.transactionType === 'PURCHASE_SUPPLIER_RETURN' ? item.remark : undefined)
+              : item.transactionType === 'PURCHASE_PUTAWAY' ? '待上架区（未入位）'
+                : item.transactionType === 'PURCHASE_QUARANTINE' ? '隔离次品（未入位）' : '—' },
             { title: '目标库位', render: (_, item) => item.targetLocationId
               ? locationLabel(item.targetLocationId, item.remark) : '—' },
             { title: '仓库在手', render: (_, item) => `${item.beforeOnHand} → ${item.afterOnHand}` },

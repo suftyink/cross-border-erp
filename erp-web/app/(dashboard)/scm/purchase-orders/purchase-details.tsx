@@ -5,7 +5,7 @@ import { Alert, Form, Input, InputNumber, Modal, Table, Typography } from 'antd'
 import { isAxiosError } from 'axios';
 import { post } from '@/lib/api/client';
 import { useApi } from '@/lib/hooks';
-import type { PurchaseAmendmentLine, PurchaseOrder, PurchaseOrderItem } from '@/types';
+import type { PurchaseAmendmentLine, PurchaseOrder, PurchaseOrderItem, SupplierReturn } from '@/types';
 
 interface AmendmentForm {
   reason: string;
@@ -23,12 +23,16 @@ export function PurchaseDetails({ order, amend, onClose, onSaved }: {
   const [error, setError] = useState<string>();
   const endpoint = `/scm/api/in/v1/purchase-orders/${encodeURIComponent(order.poId)}/amendments`;
   const history = useApi<PurchaseAmendmentLine[]>(endpoint);
+  const returns = useApi<SupplierReturn[]>(`/scm/api/in/v1/purchase-orders/${encodeURIComponent(order.poId)}/supplier-returns`);
   const columns = [
     { title: 'SKU', dataIndex: 'sellerSku' },
     { title: '原订购', dataIndex: 'originalQuantity' },
     { title: '现订购', dataIndex: 'quantity' },
     { title: '累计实收', dataIndex: 'receivedQuantity' },
     { title: '超收', dataIndex: 'overReceivedQuantity' },
+    { title: '已退', render: (_: unknown, line: PurchaseOrderItem) => returns.error ? '—'
+      : returns.data?.reduce((total, item) => item.purchaseOrderLineId === line.lineId
+        ? total + (item.shippedQuantity ?? 0) : total, 0) ?? '—' },
     { title: '待收', dataIndex: 'pendingQuantity' },
   ];
 
@@ -85,6 +89,7 @@ export function PurchaseDetails({ order, amend, onClose, onSaved }: {
       ) : <Table size="small" rowKey="lineId" pagination={false} dataSource={order.lines} columns={columns} />}
       <Typography.Title level={5} style={{ marginTop: 16 }}>采购变更记录</Typography.Title>
       {history.error && <Alert showIcon type="error" message="采购变更记录加载失败" />}
+      {returns.error && <Alert showIcon type="error" message="退供数量加载失败" />}
       <Table<PurchaseAmendmentLine> size="small" rowKey={(line) => `${line.amendmentId}/${line.lineId}`}
         loading={history.isLoading} pagination={{ pageSize: 5 }} dataSource={history.data ?? []} columns={[
           { title: 'SKU', render: (_, line) => order.lines.find((item) => item.lineId === line.lineId)?.sellerSku ?? line.lineId },

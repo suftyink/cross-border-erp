@@ -12,6 +12,7 @@ import type { PurchaseOrder, PurchaseReceipt, PurchaseReceiptInput, PurchaseRece
 import { ReceiptLabels } from './receipt-labels';
 import { InspectionDialog, InspectionWork } from './purchase-inspection';
 import { PurchasePutaway } from './purchase-putaway';
+import { PurchaseReturns, ReceiptReturnAction } from './purchase-returns';
 import { newOperationId } from './operation-id';
 
 const receiptsApi = '/wms/api/in/v1/purchase-receipts';
@@ -25,6 +26,7 @@ function ReceiptWork() {
   const search = useSearchParams();
   const purchaseOrderId = search.get('purchaseOrderId');
   const sourceBatchNo = search.get('batchNo');
+  const returnId = search.get('returnId');
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder>();
   const [selectedReceipt, setSelectedReceipt] = useState<PurchaseReceipt>();
   const [inspectionBatch, setInspectionBatch] = useState<string>();
@@ -93,7 +95,7 @@ function ReceiptWork() {
       {pending && !selectedOrder && work.data?.canReceive && <Alert type="warning" showIcon
         message={`待确认收货 ${pending.request.receiptId}`}
         action={<Button loading={saving} onClick={() => void sendReceipt(pending)}>重试原确认</Button>} />}
-      <Tabs items={[{ key: 'receiving', label: '收货', children: (
+      <Tabs defaultActiveKey={returnId ? 'returns' : 'receiving'} items={[{ key: 'receiving', label: '收货', children: (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           {work.data?.canReceive && <Card title="收货待办">
             <Table<PurchaseOrder> rowKey="poId" size="small" dataSource={purchaseOrders} columns={[
@@ -119,6 +121,8 @@ function ReceiptWork() {
         <InspectionWork purchaseOrderId={purchaseOrderId} warehouses={warehouses ?? []} />
       ) }, { key: 'putaway', label: '上架', children: (
         <PurchasePutaway purchaseOrderId={purchaseOrderId} warehouses={warehouses ?? []} />
+      ) }, { key: 'returns', label: '隔离与退供', children: (
+        <PurchaseReturns purchaseOrderId={purchaseOrderId} returnId={returnId} warehouses={warehouses ?? []} />
       ) }]} />
 
       <Modal title={`确认到货 ${selectedOrder?.poNumber ?? ''}`} open={!!selectedOrder}
@@ -167,6 +171,7 @@ function ReceiptWork() {
             审批锁定容差 {sourceOrder.data.receiptTolerancePercent}% · 采购单累计超收 {sourceOrder.data.overReceivedQuantity} 件
           </Typography.Text>}
           <ReceiptLabels receipt={selectedReceipt} />
+          <ReceiptReturnAction key={selectedReceipt.receiptId} receipt={selectedReceipt} />
           <Table rowKey="batchNo" size="small" pagination={false} dataSource={selectedReceipt.lines} columns={[
             { title: 'SKU', dataIndex: 'sellerSku' },
             { title: '采购明细', dataIndex: 'purchaseOrderLineId' },
