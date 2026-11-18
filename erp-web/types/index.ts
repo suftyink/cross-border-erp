@@ -291,6 +291,7 @@ export interface PurchaseOrder {
   lines: PurchaseOrderItem[];
   createdAt: string;
   receiptTolerancePercent: number;
+  amendable: boolean;
 }
 
 export interface PurchaseOrderItem {
@@ -303,6 +304,13 @@ export interface PurchaseOrderItem {
   pendingQuantity: number;
   overReceivedQuantity: number;
   receivingLimit: number;
+  fulfillmentQuantity: number;
+  originalReceivedQuantity: number;
+  normalPendingQuantity: number;
+  normalReceivableQuantity: number;
+  replacementPendingQuantity: number;
+  replacementReceivedQuantity: number;
+  replacementReceivableQuantity: number;
 }
 
 export interface PurchaseAmendmentLine {
@@ -330,6 +338,7 @@ export interface PurchaseReceiptInput {
   receiptId: string;
   warehouseId: string;
   receipts: PurchaseReceiptLineInput[];
+  replacement?: boolean;
 }
 
 export interface PurchaseReceipt {
@@ -339,6 +348,7 @@ export interface PurchaseReceipt {
   operatorId: string;
   receivedAt: string;
   lines: { purchaseOrderLineId: string; sellerSku: string; supplierBatchNo?: string; batchNo: string; quantity: number }[];
+  replacement: boolean;
 }
 
 export interface PurchaseReceiptMovement {
@@ -363,6 +373,7 @@ export interface SupplierReturn {
   requestedQuantity: number;
   shippedQuantity: number | null;
   shippedAt: string | null;
+  replace: boolean;
 }
 
 export interface PurchasePlan {

@@ -30,7 +30,7 @@ public class PurchaseReceivingService {
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Confirmation confirm(String tenantId, String operatorId, String purchaseOrderId, String receiptId,
-                                String warehouseId, List<ArrivalLine> arrivals) {
+                                String warehouseId, List<ArrivalLine> arrivals, boolean replacement) {
         PurchaseOrder order = purchaseStore.lockPurchaseOrder(tenantId, purchaseOrderId)
                 .orElseThrow(() -> new BizException("PO_NOT_FOUND", "采购单不存在"));
         List<ArrivalLine> lines = mergeBySupplierBatch(arrivals);
@@ -41,13 +41,16 @@ public class PurchaseReceivingService {
                     .map(line -> new ArrivalLine(line.purchaseOrderLineId(), line.quantity(), line.supplierBatchNo()))
                     .toList();
             if (!receipt.purchaseOrderId().equals(purchaseOrderId) || !receipt.warehouseId().equals(warehouseId)
-                    || recorded.size() != lines.size() || !recorded.containsAll(lines)) {
+                    || receipt.replacement() != replacement || recorded.size() != lines.size() || !recorded.containsAll(lines)) {
                 throw new BizException("RECEIPT_CONFLICT", "该收货编号已用于另一笔收货");
             }
             return new Confirmation(order, receipt);
         }
         if (!order.canReceive()) {
             throw new BizException("PO_STATUS_INVALID", "只有已审批或部分收货的采购单可以收货");
+        }
+        if (!replacement && order.normalReceiptComplete()) {
+            throw new BizException("REPLACEMENT_RECEIPT_REQUIRED", "采购单常规收货已结束，请选择补发收货");
         }
         List<DeliveryLine> delivery = lines.stream().map(line -> {
             PurchaseOrderLine source = order.lines().stream()
@@ -59,8 +62,8 @@ public class PurchaseReceivingService {
         }).toList();
         PurchaseOrder updated = purchases.recordWarehouseReceipt(order, lines.stream()
                 .map(line -> new PurchaseService.ReceiptLine(line.lineId(), line.quantity()))
-                .toList());
-        Receipt receipt = warehouse.receive(tenantId, purchaseOrderId, receiptId, warehouseId, operatorId, delivery);
+                .toList(), replacement);
+        Receipt receipt = warehouse.receive(tenantId, purchaseOrderId, receiptId, warehouseId, operatorId, delivery, replacement);
         return new Confirmation(updated, receipt);
     }
 

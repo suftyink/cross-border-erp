@@ -31,8 +31,8 @@ public class PurchaseAmendmentService {
     public PurchaseOrder amend(String tenantId, String poId, String operatorId, String reason, List<Revision> revisions) {
         PurchaseOrder order = store.lockPurchaseOrder(tenantId, poId)
                 .orElseThrow(() -> new BizException("PO_NOT_FOUND", "采购单不存在"));
-        if (order.status() != PurchaseOrderStatus.RECEIVED) {
-            throw new BizException("PO_STATUS_INVALID", "只有已收齐的采购单可以办理此次变更");
+        if (!order.isAmendable()) {
+            throw new BizException("PO_STATUS_INVALID", "采购单须已收齐或有待补数量才可办理此次变更");
         }
 
         Map<String, PurchaseOrderLine> replacements = new HashMap<>();
@@ -41,8 +41,11 @@ public class PurchaseAmendmentService {
         for (Revision revision : revisions) {
             PurchaseOrderLine oldLine = order.lines().stream().filter(line -> line.lineId().equals(revision.lineId()))
                     .findFirst().orElseThrow(() -> new BizException("PO_LINE_NOT_FOUND", "采购单明细不存在"));
-            if (revision.quantity() <= Math.max(oldLine.quantity(), oldLine.receivedQuantity())) {
-                throw new BizException("PO_AMEND_QUANTITY_INVALID", "变更后订购量必须大于现订购量及累计实收量");
+            if (!order.normalReceiptComplete() && oldLine.getReplacementPendingQuantity() == 0) {
+                throw new BizException("PO_AMEND_LINE_NOT_ELIGIBLE", "常规收货未完成时，只能变更有待补数量的采购明细");
+            }
+            if (revision.quantity() <= Math.max(oldLine.quantity(), oldLine.ordinaryProgress())) {
+                throw new BizException("PO_AMEND_QUANTITY_INVALID", "变更后订购量必须大于现订购量及订单履约数量");
             }
             PurchaseOrderLine revised = oldLine.amend(revision.quantity());
             if (replacements.putIfAbsent(oldLine.lineId(), revised) != null) {

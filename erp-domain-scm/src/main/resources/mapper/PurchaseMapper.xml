@@ -50,15 +50,19 @@
     <insert id="insertLine" parameterType="com.aidotnet.erp.scm.infrastructure.data.PurchaseOrderLineDO">
         INSERT INTO scm_purchase_order_line (po_id, line_id, product_id, seller_sku, quantity,
                                              received_quantity, unit_cost, total_price, expected_date,
-                                             original_quantity, over_received_before_amendment)
+                                             original_quantity, over_received_before_amendment, replacement_pending_quantity,
+                                             replacement_received_quantity, replacement_tolerance_quantity, replacement_amendment_quantity)
         VALUES (#{poId}, #{lineId}, #{productId}, #{sellerSku}, #{quantity},
                 #{receivedQuantity}, #{unitCost}, #{totalPrice}, #{expectedDate},
-                #{originalQuantity}, #{overReceivedBeforeAmendment})
+                #{originalQuantity}, #{overReceivedBeforeAmendment}, #{replacementPendingQuantity},
+                #{replacementReceivedQuantity}, #{replacementToleranceQuantity}, #{replacementAmendmentQuantity})
     </insert>
 
     <select id="selectLines" resultType="com.aidotnet.erp.scm.infrastructure.data.PurchaseOrderLineDO">
         SELECT po_id, line_id, product_id, seller_sku, quantity, received_quantity,
-               unit_cost, total_price, expected_date, original_quantity, over_received_before_amendment
+               unit_cost, total_price, expected_date, original_quantity, over_received_before_amendment,
+               replacement_pending_quantity, replacement_received_quantity, replacement_tolerance_quantity,
+               replacement_amendment_quantity
         FROM scm_purchase_order_line
         WHERE po_id = #{poId}
         ORDER BY line_id

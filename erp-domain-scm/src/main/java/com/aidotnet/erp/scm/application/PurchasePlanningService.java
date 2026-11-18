@@ -207,12 +207,13 @@ public class PurchasePlanningService {
     }
 
     private int calculateInPurchasingQuantity(List<PurchaseOrder> openPurchaseOrders, String sellerSku) {
-        return openPurchaseOrders.stream()
+        long pending = openPurchaseOrders.stream()
                 .filter(this::isOpenPurchaseOrder)
                 .flatMap(order -> order.lines().stream())
                 .filter(line -> sellerSku.equals(line.sellerSku()))
-                .mapToInt(line -> Math.max(line.quantity() - line.receivedQuantity(), 0))
+                .mapToLong(com.aidotnet.erp.scm.domain.PurchaseOrderLine::getPendingQuantity)
                 .sum();
+        return (int) Math.min(Integer.MAX_VALUE, pending);
     }
 
     private boolean isOpenPurchaseOrder(PurchaseOrder purchaseOrder) {

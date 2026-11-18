@@ -10,7 +10,12 @@ import com.aidotnet.erp.common.security.JwtProvider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Set;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -163,10 +168,18 @@ class PurchaseInspectionApiTests {
     }
 
     private Fixture fixture(int orderedQuantity) throws Exception {
+        return fixture(orderedQuantity, 0);
+    }
+
+    private Fixture fixture(int orderedQuantity, int tolerance) throws Exception {
         Fixture tenant = new Fixture("inspection-" + UUID.randomUUID(), null, null);
         String supplier = data(call(tenant, post("/scm/api/in/v1/suppliers").content("""
                 {"name":"Quality supplier","countryCode":"CN"}
                 """))).at("/supplier/supplierId").asText();
+        if (tolerance != 0) {
+            call(tenant, patch("/scm/api/in/v1/suppliers/{id}/receipt-tolerance", supplier)
+                    .content("{\"percent\":" + tolerance + "}"), "scm:supplier:tolerance:write").andExpect(status().isOk());
+        }
         String po = data(call(tenant, post(ORDERS).content("""
                 {"supplierId":"%s","currency":"USD","purchaseType":"MARKET","lines":[
                 {"lineId":"L1","sellerSku":"MUG-01","quantity":%d,"unitCost":10}]}
@@ -332,6 +345,121 @@ class PurchaseInspectionApiTests {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].sourceLocationId").value(quarantine))
                 .andExpect(jsonPath("$.data[0].afterOnHand").value(97));
+    }
+
+    @Test
+    void shipmentReopensPurchaseForReplacementAndOnlyExcessUsesTolerance() throws Exception {
+        Fixture f = fixture(100, 1);
+        JsonNode receipt = receive(f, """
+                [{"lineId":"L1","quantity":100}]
+                """);
+        String batch = receipt.at("/lines/0/batchNo").asText();
+        String returnId = requestReplacement(f, receipt);
+        purchaseLine(f).andExpect(jsonPath("$.data.lines[0].pendingQuantity").value(0));
+        shipReplacement(f, returnId);
+        shipReplacement(f, returnId);
+        purchaseLine(f).andExpect(jsonPath("$.data.lines[0].pendingQuantity").value(3))
+                .andExpect(jsonPath("$.data.lines[0].replacementPendingQuantity").value(3));
+
+        String deliveryId = UUID.randomUUID().toString();
+        replacementReceipt(f, deliveryId, 5, true).andExpect(jsonPath("$.code").value("PO_RECEIVE_EXCEEDS_ORDERED"));
+        replacementReceipt(f, deliveryId, 1, false).andExpect(status().isBadRequest());
+        JsonNode replacement = data(replacementReceipt(f, deliveryId, 4, true));
+        org.assertj.core.api.Assertions.assertThat(replacement.at("/lines/0/batchNo").asText()).isNotEqualTo(batch);
+        org.assertj.core.api.Assertions.assertThat(replacement.path("replacement").asBoolean()).isTrue();
+        replacementReceipt(f, deliveryId, 4, true).andExpect(status().isOk());
+        replacementReceipt(f, deliveryId, 4, false).andExpect(jsonPath("$.code").value("RECEIPT_CONFLICT"));
+        purchaseLine(f).andExpect(jsonPath("$.data.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.data.lines[0].receivedQuantity").value(104))
+                .andExpect(jsonPath("$.data.lines[0].originalReceivedQuantity").value(100))
+                .andExpect(jsonPath("$.data.lines[0].replacementReceivedQuantity").value(4))
+                .andExpect(jsonPath("$.data.lines[0].replacementPendingQuantity").value(0))
+                .andExpect(jsonPath("$.data.lines[0].overReceivedQuantity").value(1));
+        inventory(f).andExpect(jsonPath("$.data[0].onHand").value(101))
+                .andExpect(jsonPath("$.data[0].pendingInspection").value(4))
+                .andExpect(jsonPath("$.data[0].quarantined").value(0));
+        call(f, get(RECEIPTS + "/{receiptId}/movements", deliveryId), RECEIVE)
+                .andExpect(jsonPath("$.data[0].batchNo").value(replacement.at("/lines/0/batchNo").asText()))
+                .andExpect(jsonPath("$.data[0].quantity").value(4));
+    }
+
+    @Test
+    void replacementBeyondAllowanceRequiresAnAmendmentAndConcurrentConfirmationsPostOnce() throws Exception {
+        Fixture f = fixture(110);
+        JsonNode receipt = receive(f, """
+                [{"lineId":"L1","quantity":100}]
+                """);
+        String returnId = requestReplacement(f, receipt);
+        call(f, post(RETURNS + "/{id}/ship", returnId).content("{\"quantity\":2}"), SHIP_RETURN)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.shippedQuantity").value(2));
+        replacementReceipt(f, UUID.randomUUID().toString(), 3, true).andExpect(status().isBadRequest());
+        inventory(f).andExpect(jsonPath("$.data[0].onHand").value(98))
+                .andExpect(jsonPath("$.data[0].quarantined").value(1));
+        purchaseLine(f).andExpect(jsonPath("$.data.lines[0].replacementPendingQuantity").value(2))
+                .andExpect(jsonPath("$.data.lines[0].pendingQuantity").value(12));
+        call(f, post(ORDERS + "/{po}/trackings/L1/returns", f.purchaseOrder()).content("""
+                {"returnedQuantity":1,"reason":"Duplicate manual entry"}
+                """)).andExpect(jsonPath("$.code").value("REPLACEMENT_TRACKING_MANAGED_BY_WMS"));
+        call(f, post(ORDERS + "/{po}/amendments", f.purchaseOrder()).content("""
+                {"reason":"Agreed extra unit","lines":[{"lineId":"L1","quantity":111}]}
+                """), "scm:purchase:amend").andExpect(status().isOk());
+        purchaseLine(f).andExpect(jsonPath("$.data.lines[0].replacementReceivableQuantity").value(3));
+
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var start = new CyclicBarrier(2);
+            Callable<Integer> confirm = () -> {
+                start.await(10, TimeUnit.SECONDS);
+                return replacementReceipt(f, UUID.randomUUID().toString(), 3, true).andReturn().getResponse().getStatus();
+            };
+            var first = executor.submit(confirm);
+            var second = executor.submit(confirm);
+            org.assertj.core.api.Assertions.assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 400);
+        } finally {
+            executor.shutdownNow();
+        }
+        purchaseLine(f).andExpect(jsonPath("$.data.status").value("PARTIALLY_RECEIVED"))
+                .andExpect(jsonPath("$.data.lines[0].quantity").value(111))
+                .andExpect(jsonPath("$.data.lines[0].pendingQuantity").value(10))
+                .andExpect(jsonPath("$.data.lines[0].overReceivedQuantity").value(0))
+                .andExpect(jsonPath("$.data.lines[0].replacementPendingQuantity").value(0))
+                .andExpect(jsonPath("$.data.lines[0].replacementReceivedQuantity").value(3));
+        inventory(f).andExpect(jsonPath("$.data[0].onHand").value(101));
+    }
+
+    private String requestReplacement(Fixture f, JsonNode receipt) throws Exception {
+        String batch = receipt.at("/lines/0/batchNo").asText();
+        String quarantine = location(f, f.warehouse(), "REPL-Q", "QUARANTINE", true);
+        sample(f, batch, "sample", 20, 19, 1).andExpect(status().isOk());
+        call(f, post(INSPECTIONS + "/{batch}/recheck", batch).content("""
+                {"method":"FULL","checkedQuantity":100,"passedQuantity":97,"failedQuantity":3}
+                """), QUALITY).andExpect(status().isOk());
+        disposition(f, batch, 97, 3, QUALITY).andExpect(status().isOk());
+        call(f, post(RETURNS + "/batches/{batch}/isolate", batch).content("""
+                {"requestId":"%s","locationCode":"REPL-Q","quantity":3}
+                """.formatted(UUID.randomUUID())), ISOLATE).andExpect(status().isOk());
+        String returnId = UUID.randomUUID().toString();
+        call(f, post(RETURNS + "/receipts/{receipt}", receipt.path("receiptId").asText()).content("""
+                {"returnId":"%s","batchNo":"%s","locationId":"%s","quantity":3,"reason":"Damaged","replace":true}
+                """.formatted(returnId, batch, quarantine)), REQUEST_RETURN)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.replace").value(true));
+        return returnId;
+    }
+
+    private void shipReplacement(Fixture f, String returnId) throws Exception {
+        call(f, post(RETURNS + "/{id}/ship", returnId).content("{\"quantity\":3}"), SHIP_RETURN)
+                .andExpect(status().isOk());
+    }
+
+    private ResultActions purchaseLine(Fixture f) throws Exception {
+        return call(f, get(ORDERS + "/{po}", f.purchaseOrder())).andExpect(status().isOk());
+    }
+
+    private ResultActions replacementReceipt(Fixture f, String receiptId, int quantity, boolean replacement) throws Exception {
+        return call(f, post(RECEIPTS + "/{po}", f.purchaseOrder()).content("""
+                {"receiptId":"%s","warehouseId":"%s","replacement":%s,"receipts":[{"lineId":"L1","quantity":%d}]}
+                """.formatted(receiptId, f.warehouse(), replacement, quantity)), RECEIVE);
     }
 
     private String location(Fixture f, String warehouseId, String code, String purpose, boolean enabled) throws Exception {

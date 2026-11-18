@@ -24,16 +24,20 @@ export function PurchaseDetails({ order, amend, onClose, onSaved }: {
   const endpoint = `/scm/api/in/v1/purchase-orders/${encodeURIComponent(order.poId)}/amendments`;
   const history = useApi<PurchaseAmendmentLine[]>(endpoint);
   const returns = useApi<SupplierReturn[]>(`/scm/api/in/v1/purchase-orders/${encodeURIComponent(order.poId)}/supplier-returns`);
+  const normalReceiptComplete = order.lines.every((line) => line.normalPendingQuantity === 0);
   const columns = [
     { title: 'SKU', dataIndex: 'sellerSku' },
     { title: '原订购', dataIndex: 'originalQuantity' },
     { title: '现订购', dataIndex: 'quantity' },
     { title: '累计实收', dataIndex: 'receivedQuantity' },
+    { title: '原实收', dataIndex: 'originalReceivedQuantity' },
+    { title: '补发实收', dataIndex: 'replacementReceivedQuantity' },
     { title: '超收', dataIndex: 'overReceivedQuantity' },
     { title: '已退', render: (_: unknown, line: PurchaseOrderItem) => returns.error ? '—'
       : returns.data?.reduce((total, item) => item.purchaseOrderLineId === line.lineId
         ? total + (item.shippedQuantity ?? 0) : total, 0) ?? '—' },
     { title: '待收', dataIndex: 'pendingQuantity' },
+    { title: '其中待补', dataIndex: 'replacementPendingQuantity' },
   ];
 
   const save = async (values: AmendmentForm) => {
@@ -71,7 +75,8 @@ export function PurchaseDetails({ order, amend, onClose, onSaved }: {
             dataSource={order.lines} columns={[...columns, {
               title: '变更后订购量',
               render: (_, line) => {
-                const minimum = Math.max(line.quantity, line.receivedQuantity) + 1;
+                if (!normalReceiptComplete && line.replacementPendingQuantity === 0) return '—';
+                const minimum = Math.max(line.quantity, line.fulfillmentQuantity) + 1;
                 return <Form.Item name={['quantities', line.lineId]} style={{ margin: 0 }}
                   rules={[{ type: 'integer', min: minimum, max: 2147483647, message: `请填写至少 ${minimum} 件` }]}>
                   <InputNumber aria-label={`${line.sellerSku} 变更后订购量`}
@@ -80,7 +85,7 @@ export function PurchaseDetails({ order, amend, onClose, onSaved }: {
               },
             }]} />
           <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
-            填写要变更的采购行。变更后订购量减去累计实收量，就是仓库可继续收货的数量。
+            填写要变更的采购行。确认后，新增订购量纳入收货校验，已有待补数量仍可补发。
           </Typography.Paragraph>
           <Form.Item name="reason" label="变更原因" rules={[{ required: true, whitespace: true }]}>
             <Input.TextArea maxLength={500} />

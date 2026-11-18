@@ -15,13 +15,13 @@ public interface PurchaseReceiptOperations {
     List<ReceiptMovement> listReceiptMovements(String tenantId, String receiptId);
 
     Receipt receive(String tenantId, String purchaseOrderId, String receiptId, String warehouseId,
-                    String operatorId, List<DeliveryLine> lines);
+                    String operatorId, List<DeliveryLine> lines, boolean replacement);
 
     record DeliveryLine(String purchaseOrderLineId, String sellerSku, String supplierBatchNo,
                         int quantity, BigDecimal unitCost) {}
 
     record Receipt(String receiptId, String purchaseOrderId, String warehouseId, String operatorId,
-                   Instant receivedAt, List<ReceiptLine> lines) {}
+                   Instant receivedAt, List<ReceiptLine> lines, boolean replacement) {}
 
     record ReceiptLine(String purchaseOrderLineId, String sellerSku, String supplierBatchNo,
                        String batchNo, int quantity) {}

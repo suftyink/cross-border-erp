@@ -254,29 +254,38 @@ public class PurchaseService {
         return purchaseStore.savePurchaseOrder(po.approve(approverId, percent));
     }
 
-    PurchaseOrder recordWarehouseReceipt(PurchaseOrder po, List<ReceiptLine> receipts) {
+    PurchaseOrder recordWarehouseReceipt(PurchaseOrder po, List<ReceiptLine> receipts, boolean replacement) {
+        List<ReceiptLine> costLines = new java.util.ArrayList<>();
         List<PurchaseOrderLine> lines = po.lines().stream().map(line -> {
             long received = receipts.stream()
                     .filter(receipt -> receipt.lineId().equals(line.lineId()))
                     .mapToLong(ReceiptLine::quantity)
                     .sum();
             long totalReceived = line.receivedQuantity() + received;
-            if (totalReceived > line.receivingLimit()) {
-                throw new BizException("PO_RECEIVE_EXCEEDS_ORDERED",
-                        "采购明细 " + line.sellerSku() + " 的累计实收超出上限 " + line.receivingLimit());
+            if (received == 0) {
+                return line;
             }
-            return line.receive((int) totalReceived);
+            int remaining = replacement ? line.replacementReceivableQuantity() : line.getNormalReceivableQuantity();
+            if (received > remaining || totalReceived > Integer.MAX_VALUE) {
+                throw new BizException("PO_RECEIVE_EXCEEDS_ORDERED",
+                        "采购明细 " + line.sellerSku() + " 本次最多可收 " + remaining + " 件");
+            }
+            int chargeable = (int) received - (replacement ? Math.min((int) received, line.getReplacementPendingQuantity()) : 0);
+            if (chargeable > 0) {
+                costLines.add(new ReceiptLine(line.lineId(), chargeable));
+            }
+            return replacement ? line.receiveReplacement((int) received) : line.receive((int) totalReceived);
         }).toList();
         boolean allReceived = lines.stream().allMatch(line -> line.getPendingQuantity() == 0);
         PurchaseOrder updated = update(
                 po,
                 allReceived ? PurchaseOrderStatus.RECEIVED : PurchaseOrderStatus.PARTIALLY_RECEIVED,
                 lines);
-        syncPurchaseTrackingAfterReceive(po.tenantId(), po, receipts);
+        syncPurchaseTrackingAfterReceive(po.tenantId(), updated, receipts);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                recordProductCostsAfterReceive(po, receipts);
+                recordProductCostsAfterReceive(po, costLines);
             }
         });
         return updated;
@@ -440,7 +449,13 @@ public class PurchaseService {
             purchaseTrackingService.initTracking(tenantId, po.poId());
         }
         for (ReceiptLine receipt : receipts) {
-            purchaseTrackingService.recordWarehouseReceipt(tenantId, po.poId(), receipt.lineId(), receipt.quantity());
+            PurchaseOrderLine line = po.lines().stream().filter(row -> row.lineId().equals(receipt.lineId()))
+                    .findFirst().orElseThrow();
+            if (line.getReplacementReceivedQuantity() > 0 || line.getReplacementPendingQuantity() > 0) {
+                purchaseTrackingService.syncReplacementProgress(tenantId, po.poId(), line);
+            } else {
+                purchaseTrackingService.recordWarehouseReceipt(tenantId, po.poId(), receipt.lineId(), receipt.quantity());
+            }
         }
     }
 

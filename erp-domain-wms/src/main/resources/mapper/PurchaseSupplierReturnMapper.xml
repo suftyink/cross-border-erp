@@ -22,7 +22,7 @@
     <sql id="returnColumns">
         return_id, receipt_id, purchase_order_id, purchase_order_line_id, batch_no, warehouse_id,
         location_id, location_code, seller_sku, requested_quantity, reason, requested_by, requested_at,
-        shipped_quantity, shipped_by, shipped_at
+        shipped_quantity, shipped_by, shipped_at, replace
     </sql>
 
     <select id="pendingReturnQuantity" resultType="long">
@@ -35,7 +35,7 @@
         VALUES (#{tenantId}, #{document.returnId}, #{document.receiptId}, #{document.purchaseOrderId},
                 #{document.purchaseOrderLineId}, #{document.batchNo}, #{document.warehouseId}, #{document.locationId},
                 #{document.locationCode}, #{document.sellerSku}, #{document.requestedQuantity}, #{document.reason},
-                #{document.requestedBy}, #{document.requestedAt}, NULL, NULL, NULL)
+                #{document.requestedBy}, #{document.requestedAt}, NULL, NULL, NULL, #{document.replace})
         ON CONFLICT (tenant_id, return_id) DO NOTHING
     </insert>
 

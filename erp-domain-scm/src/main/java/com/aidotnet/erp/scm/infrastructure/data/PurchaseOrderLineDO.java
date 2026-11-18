@@ -15,6 +15,19 @@ public class PurchaseOrderLineDO {
     private Integer receivedQuantity;
     private Integer originalQuantity;
     private int overReceivedBeforeAmendment;
+    private int replacementPendingQuantity;
+    private int replacementReceivedQuantity;
+    private int replacementToleranceQuantity;
+    private int replacementAmendmentQuantity;
+
+    public int getReplacementPendingQuantity() { return replacementPendingQuantity; }
+    public void setReplacementPendingQuantity(int quantity) { replacementPendingQuantity = quantity; }
+    public int getReplacementReceivedQuantity() { return replacementReceivedQuantity; }
+    public void setReplacementReceivedQuantity(int quantity) { replacementReceivedQuantity = quantity; }
+    public int getReplacementToleranceQuantity() { return replacementToleranceQuantity; }
+    public void setReplacementToleranceQuantity(int quantity) { replacementToleranceQuantity = quantity; }
+    public int getReplacementAmendmentQuantity() { return replacementAmendmentQuantity; }
+    public void setReplacementAmendmentQuantity(int quantity) { replacementAmendmentQuantity = quantity; }
 
     public Integer getOriginalQuantity() { return originalQuantity; }
     public void setOriginalQuantity(Integer originalQuantity) { this.originalQuantity = originalQuantity; }

@@ -28,6 +28,7 @@ function ReceiptWork() {
   const sourceBatchNo = search.get('batchNo');
   const returnId = search.get('returnId');
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder>();
+  const [replacement, setReplacement] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<PurchaseReceipt>();
   const [inspectionBatch, setInspectionBatch] = useState<string>();
   const [saving, setSaving] = useState(false);
@@ -49,9 +50,10 @@ function ReceiptWork() {
     setPending(saved ? JSON.parse(saved) as PendingReceipt : undefined);
   }, [storageKey]);
 
-  const startReceipt = (order: PurchaseOrder) => {
+  const startReceipt = (order: PurchaseOrder, replacement = false) => {
     form.resetFields();
     setSelectedOrder(order);
+    setReplacement(replacement);
   };
 
   const sendReceipt = async (attempt: PendingReceipt) => {
@@ -82,7 +84,7 @@ function ReceiptWork() {
 
   const confirmReceipt = (values: Omit<PurchaseReceiptInput, 'receiptId'>) => {
     if (selectedOrder) {
-      void sendReceipt({ orderId: selectedOrder.poId, request: { ...values, receiptId: newOperationId() } });
+      void sendReceipt({ orderId: selectedOrder.poId, request: { ...values, receiptId: newOperationId(), replacement } });
     }
   };
 
@@ -101,15 +103,22 @@ function ReceiptWork() {
             <Table<PurchaseOrder> rowKey="poId" size="small" dataSource={purchaseOrders} columns={[
               { title: '采购单号', dataIndex: 'poNumber' },
               { title: '待收数量', render: (_, order) => order.lines.reduce((sum, line) => sum + line.pendingQuantity, 0) },
+              { title: '其中待补', render: (_, order) => order.lines.reduce((sum, line) => sum + line.replacementPendingQuantity, 0) },
               { title: '超收数量', render: (_, order) => order.lines.reduce((sum, line) => sum + line.overReceivedQuantity, 0) },
               { title: '审批锁定容差', render: (_, order) => `${order.receiptTolerancePercent}%` },
-              { title: '操作', render: (_, order) => <Button disabled={!!pending} onClick={() => startReceipt(order)}>确认本次到货</Button> },
+              { title: '操作', render: (_, order) => <Space wrap>
+                {order.lines.some((line) => line.normalPendingQuantity > 0)
+                  && <Button disabled={!!pending} onClick={() => startReceipt(order)}>确认本次到货</Button>}
+                {order.lines.some((line) => line.replacementPendingQuantity > 0)
+                  && <Button disabled={!!pending} onClick={() => startReceipt(order, true)}>补发收货</Button>}
+              </Space> },
             ]} />
           </Card>}
           <Card title="收货记录">
             <Table<PurchaseReceipt> rowKey="receiptId" size="small" loading={receipts.isLoading}
               dataSource={(receipts.data ?? []).filter((receipt) => !sourceBatchNo || receipt.lines.some((line) => line.batchNo === sourceBatchNo))} columns={[
               { title: '收货编号', dataIndex: 'receiptId' },
+              { title: '类型', render: (_, receipt) => receipt.replacement ? '补发收货' : '常规收货' },
               { title: '仓库', render: (_, receipt) => warehouses?.find((warehouse) => warehouse.warehouseId === receipt.warehouseId)?.name ?? receipt.warehouseId },
               { title: '实收数量', render: (_, receipt) => receipt.lines.reduce((sum, line) => sum + line.quantity, 0) },
               { title: '确认时间', render: (_, receipt) => new Date(receipt.receivedAt).toLocaleString() },
@@ -125,7 +134,7 @@ function ReceiptWork() {
         <PurchaseReturns purchaseOrderId={purchaseOrderId} returnId={returnId} warehouses={warehouses ?? []} />
       ) }]} />
 
-      <Modal title={`确认到货 ${selectedOrder?.poNumber ?? ''}`} open={!!selectedOrder}
+      <Modal title={`${replacement ? '补发收货' : '确认到货'} ${selectedOrder?.poNumber ?? ''}`} open={!!selectedOrder}
         okText={pending ? '重试原确认' : '确认收货'}
         onOk={() => { if (pending) void sendReceipt(pending); else form.submit(); }} confirmLoading={saving}
         cancelButtonProps={{ disabled: saving }} closable={!saving}
@@ -145,9 +154,11 @@ function ReceiptWork() {
               {fields.map(({ key, name }) => <Space key={key} align="baseline" wrap>
                 <Form.Item name={[name, 'lineId']} rules={[{ required: true, message: '请选择采购明细' }]}>
                   <Select aria-label="采购明细" placeholder="采购明细" style={{ width: 285 }} options={selectedOrder?.lines
-                    .filter((line) => line.receivingLimit > line.receivedQuantity)
+                    .filter((line) => (replacement ? line.replacementReceivableQuantity : line.normalReceivableQuantity) > 0)
                     .map((line) => ({ value: line.lineId,
-                      label: `${line.sellerSku}（待收 ${line.pendingQuantity}，最多可收 ${line.receivingLimit - line.receivedQuantity}）`,
+                      label: replacement
+                        ? `${line.sellerSku}（待补 ${line.replacementPendingQuantity}，最多可收 ${line.replacementReceivableQuantity}）`
+                        : `${line.sellerSku}（待收 ${line.normalPendingQuantity}，最多可收 ${line.normalReceivableQuantity}）`,
                     }))} />
                 </Form.Item>
                 <Form.Item name={[name, 'supplierBatchNo']}><Input maxLength={128} placeholder="供应商批号（选填）" /></Form.Item>
@@ -166,6 +177,7 @@ function ReceiptWork() {
         footer={null} width={900}>
         {selectedReceipt && <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Typography.Text>来源采购单 {sourceOrder.data?.poNumber ?? selectedReceipt.purchaseOrderId}</Typography.Text>
+          {selectedReceipt.replacement && <Typography.Text>补发收货</Typography.Text>}
           {sourceOrder.error && <Alert type="error" message="采购单容差加载失败" />}
           {sourceOrder.data && <Typography.Text>
             审批锁定容差 {sourceOrder.data.receiptTolerancePercent}% · 采购单累计超收 {sourceOrder.data.overReceivedQuantity} 件

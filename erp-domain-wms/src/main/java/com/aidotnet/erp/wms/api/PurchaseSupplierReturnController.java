@@ -65,7 +65,7 @@ public class PurchaseSupplierReturnController {
         ErpUserDetails user = user(authentication);
         return Result.ok(returns.request(user.tenantId(), receipt.toString(), user.userId(),
                 new PurchaseSupplierReturnService.Request(request.returnId().toString(), request.batchNo().toString(),
-                        request.locationId(), request.quantity(), request.reason().strip())));
+                        request.locationId(), request.quantity(), request.reason().strip(), request.replace())));
     }
 
     @PostMapping("/{id}/ship")
@@ -94,6 +94,6 @@ public class PurchaseSupplierReturnController {
     public record Placement(@NotNull UUID requestId, @NotBlank @Size(max = 128) String locationCode,
                              @Positive int quantity) {}
     public record Request(@NotNull UUID returnId, @NotNull UUID batchNo, @NotBlank @Size(max = 64) String locationId,
-                           @Positive int quantity, @NotBlank @Size(max = 500) String reason) {}
+                           @Positive int quantity, @NotBlank @Size(max = 500) String reason, boolean replace) {}
     public record Shipment(@Positive int quantity) {}
 }

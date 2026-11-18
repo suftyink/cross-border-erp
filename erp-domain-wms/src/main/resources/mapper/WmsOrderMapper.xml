@@ -14,25 +14,25 @@
 
     <insert id="insertPurchaseReceipt" parameterType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO">
         INSERT INTO wms_inbound_order (order_id, tenant_id, warehouse_id, reference_type, reference_id, status,
-                                       created_at, updated_at, operator_id)
+                                       created_at, updated_at, operator_id, replacement)
         VALUES (#{orderId}, #{tenantId}, #{warehouseId}, #{referenceType}, #{referenceId}, #{status},
-                #{createdAt}, #{updatedAt}, #{operatorId})
+                #{createdAt}, #{updatedAt}, #{operatorId}, #{replacement})
         ON CONFLICT (order_id) DO NOTHING
     </insert>
 
     <select id="selectInboundOrder" resultType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO">
-        SELECT order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at, operator_id
+        SELECT order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at, operator_id, replacement
         FROM wms_inbound_order WHERE tenant_id = #{tenantId} AND order_id = #{orderId}
     </select>
 
     <select id="selectInboundOrders" resultType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO">
-        SELECT order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at, operator_id
+        SELECT order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at, operator_id, replacement
         FROM wms_inbound_order WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId}
         ORDER BY created_at DESC
     </select>
 
     <select id="selectPurchaseReceipts" resultType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO">
-        SELECT order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at, operator_id
+        SELECT order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at, operator_id, replacement
         FROM wms_inbound_order
         WHERE tenant_id = #{tenantId} AND reference_type = 'PURCHASE_RECEIPT'
         <if test="purchaseOrderId != null">AND reference_id = #{purchaseOrderId}</if>

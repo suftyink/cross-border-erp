@@ -110,7 +110,8 @@ public class PurchaseReceiptController {
         ErpUserDetails user = currentUser(authentication);
         return receiving.confirm(user.tenantId(), user.userId(), orderId, request.receiptId().toString(),
                 request.warehouseId(), request.receipts().stream()
-                        .map(line -> new ArrivalLine(line.lineId(), line.quantity(), line.supplierBatchNo())).toList());
+                        .map(line -> new ArrivalLine(line.lineId(), line.quantity(), line.supplierBatchNo())).toList(),
+                request.replacement());
     }
 
     private ErpUserDetails currentUser(Authentication authentication) {
@@ -122,7 +123,7 @@ public class PurchaseReceiptController {
     }
 
     public record ReceiptRequest(@NotNull UUID receiptId, @NotBlank @Size(max = 64) String warehouseId,
-                                 @NotEmpty List<@NotNull @Valid ReceiptLineRequest> receipts) {}
+                                 @NotEmpty List<@NotNull @Valid ReceiptLineRequest> receipts, boolean replacement) {}
 
     public record ReceiptLineRequest(@NotBlank @Size(max = 64) String lineId, @Positive int quantity,
                                      @Size(max = 128) String supplierBatchNo) {}

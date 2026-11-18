@@ -39,9 +39,8 @@ public record PurchaseOrder(
         BigDecimal receiptTolerancePercent
 ) {
     public PurchaseOrder {
-        boolean amended = lines.stream().anyMatch(line -> line.originalQuantity() != line.quantity());
         BigDecimal percent = receiptTolerancePercent;
-        lines = lines.stream().map(line -> line.withReceivingLimit(percent, amended)).toList();
+        lines = lines.stream().map(line -> line.withReceivingLimit(percent)).toList();
     }
 
     public PurchaseOrder(String poId, String tenantId, String supplierId, String poNumber, String currency,
@@ -86,10 +85,19 @@ public record PurchaseOrder(
         return status == PurchaseOrderStatus.APPROVED || status == PurchaseOrderStatus.PARTIALLY_RECEIVED;
     }
 
+    public boolean isAmendable() {
+        return status == PurchaseOrderStatus.RECEIVED || status == PurchaseOrderStatus.PARTIALLY_RECEIVED
+                && (normalReceiptComplete() || lines.stream().anyMatch(line -> line.getReplacementPendingQuantity() > 0));
+    }
+
+    public boolean normalReceiptComplete() {
+        return lines.stream().allMatch(line -> line.getNormalPendingQuantity() == 0);
+    }
+
     /** 计算收货完成率 */
     public double getCompletionRate() {
         long total = lines.stream().mapToLong(PurchaseOrderLine::quantity).sum();
-        long received = lines.stream().mapToLong(line -> Math.min(line.quantity(), line.receivedQuantity())).sum();
+        long received = lines.stream().mapToLong(line -> Math.max(0, (long) line.quantity() - line.getPendingQuantity())).sum();
         return total > 0 ? (double) received / total : 0.0;
     }
 }

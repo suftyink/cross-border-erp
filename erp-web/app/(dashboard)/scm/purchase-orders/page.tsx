@@ -60,7 +60,7 @@ export default function PurchaseOrdersPage() {
         {r.status === 'DRAFT' && <Button size="small" onClick={() => handleSubmitForApproval(r.poId)}>提交审批</Button>}
         {r.status === 'SUBMITTED' && <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => handleApprove(r.poId)}>审批</Button>}
         <Button size="small" onClick={() => setDetails({ order: r, amend: false })}>采购明细</Button>
-        {r.status === 'RECEIVED' && permissions?.canAmend && <Button size="small"
+        {r.amendable && permissions?.canAmend && <Button size="small"
           onClick={() => setDetails({ order: r, amend: true })}>采购变更</Button>}
         <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(r.poId)}`}>收货记录</Link>
         <Link href={`/wms/inventory?purchaseOrderId=${encodeURIComponent(r.poId)}`}>批次结存</Link>

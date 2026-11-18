@@ -1,6 +1,7 @@
 package com.aidotnet.erp.wms.application;
 
 import com.aidotnet.erp.common.exception.BizException;
+import com.aidotnet.erp.common.scm.PurchaseReplacementOperations;
 import com.aidotnet.erp.common.wms.PurchaseSupplierReturns;
 import com.aidotnet.erp.wms.domain.BatchStock;
 import com.aidotnet.erp.wms.domain.InventoryBalance;
@@ -26,13 +27,16 @@ public class PurchaseSupplierReturnService implements PurchaseSupplierReturns {
     private final PurchaseInspectionMapper inspections;
     private final PurchasePutawayMapper locations;
     private final InventoryStore inventory;
+    private final PurchaseReplacementOperations replacements;
 
     public PurchaseSupplierReturnService(PurchaseSupplierReturnMapper returns, PurchaseInspectionMapper inspections,
-                                         PurchasePutawayMapper locations, InventoryStore inventory) {
+                                         PurchasePutawayMapper locations, InventoryStore inventory,
+                                         PurchaseReplacementOperations replacements) {
         this.returns = returns;
         this.inspections = inspections;
         this.locations = locations;
         this.inventory = inventory;
+        this.replacements = replacements;
     }
 
     public List<BatchStock> pendingIsolation(String tenantId, String purchaseOrderId) {
@@ -92,7 +96,8 @@ public class PurchaseSupplierReturnService implements PurchaseSupplierReturns {
         SupplierReturn existing = returns.findReturn(tenantId, command.returnId(), false);
         if (existing != null) {
             if (existing.batchNo().equals(batch.batchNo()) && existing.locationId().equals(command.locationId())
-                    && existing.requestedQuantity() == command.quantity() && existing.reason().equals(command.reason())) {
+                    && existing.requestedQuantity() == command.quantity() && existing.reason().equals(command.reason())
+                    && existing.replace() == command.replace()) {
                 return existing;
             }
             throw returnConflict();
@@ -109,7 +114,7 @@ public class PurchaseSupplierReturnService implements PurchaseSupplierReturns {
         SupplierReturn document = new SupplierReturn(command.returnId(), receiptId, batch.purchaseOrderId(),
                 batch.purchaseOrderLineId(), batch.batchNo(), batch.warehouseId(), location.locationId(),
                 location.locationCode(), batch.sellerSku(), command.quantity(), command.reason(), operatorId,
-                now(), null, null, null);
+                now(), null, null, null, command.replace());
         if (returns.insertReturn(tenantId, document) != 1) {
             throw returnConflict();
         }
@@ -118,7 +123,11 @@ public class PurchaseSupplierReturnService implements PurchaseSupplierReturns {
 
     @Transactional
     public SupplierReturn ship(String tenantId, String returnId, String operatorId, int quantity) {
-        PurchaseInspectionBatch batch = lockBatch(tenantId, findReturn(tenantId, returnId, false).batchNo());
+        SupplierReturn source = findReturn(tenantId, returnId, false);
+        if (source.replace()) {
+            replacements.lockOrder(tenantId, source.purchaseOrderId());
+        }
+        PurchaseInspectionBatch batch = lockBatch(tenantId, source.batchNo());
         SupplierReturn document = findReturn(tenantId, returnId, true);
         if (document.shippedAt() != null) {
             if (document.shippedQuantity() == quantity) {
@@ -141,6 +150,10 @@ public class PurchaseSupplierReturnService implements PurchaseSupplierReturns {
                 before, before - quantity, shippedAt));
         returns.recordShippedQuantity(tenantId, batch.batchNo(), quantity);
         returns.shipReturn(tenantId, returnId, quantity, operatorId, shippedAt);
+        if (document.replace()) {
+            replacements.recordReturnedForReplacement(tenantId, document.purchaseOrderId(),
+                    document.purchaseOrderLineId(), quantity);
+        }
         inventory.saveBalance(new InventoryBalance(tenantId, batch.warehouseId(), batch.sellerSku(),
                 balance.onHand() - quantity, balance.reserved(), balance.inTransit(), balance.frozen() - quantity, shippedAt));
         return findReturn(tenantId, returnId, false);
@@ -199,5 +212,5 @@ public class PurchaseSupplierReturnService implements PurchaseSupplierReturns {
     }
 
     public record Placement(String requestId, String locationCode, int quantity) {}
-    public record Request(String returnId, String batchNo, String locationId, int quantity, String reason) {}
+    public record Request(String returnId, String batchNo, String locationId, int quantity, String reason, boolean replace) {}
 }

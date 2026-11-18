@@ -236,6 +236,7 @@ public class WmsOrderStore {
         data.setStatus(o.status().name());
         data.setRemark(o.remark());
         data.setOperatorId(o.operatorId());
+        data.setReplacement(o.replacement());
         data.setCreatedAt(o.createdAt() != null ? o.createdAt() : Instant.now());
         data.setUpdatedAt(o.updatedAt() != null ? o.updatedAt() : Instant.now());
         return data;
@@ -244,7 +245,7 @@ public class WmsOrderStore {
     private InboundOrder toInboundOrderDomain(InboundOrderDO d) {
         return new InboundOrder(d.getOrderId(), d.getTenantId(), d.getWarehouseId(), d.getReferenceType(),
                 d.getReferenceId(), InboundOrderStatus.valueOf(d.getStatus()), d.getRemark(), d.getCreatedAt(),
-                d.getUpdatedAt(), d.getOperatorId());
+                d.getUpdatedAt(), d.getOperatorId(), d.isReplacement());
     }
 
     private InboundOrderLineDO toInboundOrderLineData(InboundOrderLine l) {

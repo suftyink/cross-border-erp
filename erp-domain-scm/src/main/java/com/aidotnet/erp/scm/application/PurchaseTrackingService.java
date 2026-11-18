@@ -82,6 +82,7 @@ public class PurchaseTrackingService {
      */
     @Transactional
     public PurchaseTracking recordReceipt(String tenantId, String poId, String lineId, int receivedQuantity, BigDecimal actualUnitCost) {
+        ensureLegacyTrackingAdjustmentAllowed(tenantId, poId, lineId);
         return recordReceipt(tenantId, poId, lineId, receivedQuantity, actualUnitCost, true);
     }
 
@@ -148,6 +149,7 @@ public class PurchaseTrackingService {
     /** 登记质损/破损数量，并生成 DAMAGED 采购异常。 */
     @Transactional
     public PurchaseTracking recordDamage(String tenantId, String poId, String lineId, int damagedQuantity, String reason) {
+        ensureLegacyTrackingAdjustmentAllowed(tenantId, poId, lineId);
         PurchaseTracking tracking = scmExtStore.lockTracking(tenantId, poId, lineId)
                 .orElseThrow(() -> new BizException("TRACKING_NOT_FOUND", "purchase tracking not found"));
         createException(
@@ -190,6 +192,7 @@ public class PurchaseTrackingService {
     /** 登记供应商退回数量，回写跟单未结数量。 */
     @Transactional
     public PurchaseTracking recordReturn(String tenantId, String poId, String lineId, int returnedQuantity, String reason) {
+        ensureLegacyTrackingAdjustmentAllowed(tenantId, poId, lineId);
         PurchaseTracking tracking = scmExtStore.lockTracking(tenantId, poId, lineId)
                 .orElseThrow(() -> new BizException("TRACKING_NOT_FOUND", "purchase tracking not found"));
         int newReceived = Math.max(0, tracking.receivedQuantity() - returnedQuantity);
@@ -293,6 +296,10 @@ public class PurchaseTrackingService {
     }
 
     void updateOrderedQuantity(String tenantId, String poId, PurchaseOrderLine line) {
+        if (line.getReplacementPendingQuantity() > 0 || line.getReplacementReceivedQuantity() > 0) {
+            syncReplacementProgress(tenantId, poId, line);
+            return;
+        }
         scmExtStore.lockTracking(tenantId, poId, line.lineId()).ifPresent(tracking -> {
             int pending = Math.max(0, line.quantity() - tracking.receivedQuantity()
                     - tracking.damagedQuantity() - tracking.returnedQuantity());
@@ -302,6 +309,28 @@ public class PurchaseTrackingService {
                     tracking.actualUnitCost(), resolveStatus(line.quantity(), tracking.receivedQuantity(),
                     tracking.damagedQuantity(), tracking.returnedQuantity(), pending), tracking.lastReceivedAt(),
                     tracking.createdAt(), Instant.now()));
+        });
+    }
+
+    private void ensureLegacyTrackingAdjustmentAllowed(String tenantId, String poId, String lineId) {
+        boolean warehouseManaged = purchaseStore.lockPurchaseOrder(tenantId, poId).stream()
+                .flatMap(order -> order.lines().stream()).anyMatch(line -> lineId.equals(line.lineId())
+                        && (line.getReplacementPendingQuantity() > 0 || line.getReplacementReceivedQuantity() > 0));
+        if (warehouseManaged) {
+            throw new BizException("REPLACEMENT_TRACKING_MANAGED_BY_WMS", "补货跟单数量由仓储作业更新");
+        }
+    }
+
+    void syncReplacementProgress(String tenantId, String poId, PurchaseOrderLine line) {
+        scmExtStore.lockTracking(tenantId, poId, line.lineId()).ifPresent(tracking -> {
+            int pending = Math.toIntExact(line.getPendingQuantity());
+            Instant now = Instant.now();
+            Instant receivedAt = tracking.receivedQuantity() < line.receivedQuantity() ? now : tracking.lastReceivedAt();
+            scmExtStore.saveTracking(new PurchaseTracking(tracking.trackingId(), tenantId, poId, line.lineId(),
+                    tracking.sellerSku(), line.quantity(), line.receivedQuantity(), pending, tracking.damagedQuantity(),
+                    tracking.returnedQuantity(), tracking.orderedUnitCost(), tracking.actualUnitCost(),
+                    pending == 0 ? PurchaseTrackingStatus.FULLY_RECEIVED : PurchaseTrackingStatus.PARTIALLY_RECEIVED,
+                    receivedAt, tracking.createdAt(), now));
         });
     }
 
@@ -327,6 +356,7 @@ public class PurchaseTrackingService {
                 && exception.exceptionType() != PurchaseExceptionType.MISSING_ITEM) {
             return;
         }
+        ensureLegacyTrackingAdjustmentAllowed(exception.tenantId(), exception.poId(), exception.lineId());
         scmExtStore.lockTracking(exception.tenantId(), exception.poId(), exception.lineId()).ifPresent(tracking -> {
             PurchaseTracking updated = new PurchaseTracking(
                     tracking.trackingId(),

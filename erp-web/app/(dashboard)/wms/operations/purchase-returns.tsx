@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, message } from 'antd';
+import { Alert, Button, Card, Form, Input, InputNumber, Modal, Radio, Select, Space, Table, Tag, message } from 'antd';
 import Link from 'next/link';
 import { isAxiosError } from 'axios';
 import { post } from '@/lib/api/client';
@@ -30,8 +30,8 @@ const endpoint = '/wms/api/in/v1/purchase-returns';
 const workUrl = (purchaseOrderId: string | null) => purchaseOrderId
   ? `${endpoint}/work?purchaseOrderId=${encodeURIComponent(purchaseOrderId)}` : `${endpoint}/work`;
 type Action = 'isolate' | 'request' | 'ship';
-type Fields = { quantity?: number; locationCode?: string; stockKey?: string; reason?: string };
-const label: Record<Action, string> = { isolate: '确认隔离入位', request: '提交仅退货申请', ship: '确认退供出库' };
+type Fields = { quantity?: number; locationCode?: string; stockKey?: string; reason?: string; replace?: boolean };
+const label: Record<Action, string> = { isolate: '确认隔离入位', request: '提交退供申请', ship: '确认退供出库' };
 type PendingCommand = { path: string; action: Action; body: Record<string, unknown> };
 const storageEvent = 'wms:purchase-return-command';
 
@@ -69,6 +69,7 @@ export function PurchaseReturns({ purchaseOrderId, returnId, warehouses }: {
             href={`/wms/operations?batchNo=${encodeURIComponent(row.batchNo)}`}>{row.batchNo}</Link> },
           { title: '采购单行', dataIndex: 'purchaseOrderLineId' },
           { title: '隔离库位', dataIndex: 'locationCode' },
+          { title: '处理方式', render: (_, row) => row.replace ? '退货并补货' : '仅退货' },
           { title: '申请件数', dataIndex: 'requestedQuantity' },
           { title: '实退件数', render: (_, row) => row.shippedQuantity ?? '—' },
           { title: '状态', render: (_, row) => <Tag>{row.shippedAt ? '已出库' : '待出库'}</Tag> },
@@ -97,8 +98,8 @@ export function ReceiptReturnAction({ receipt }: { receipt: PurchaseReceipt }) {
     .map((row) => [`${row.batchNo}/${row.locationId}`, row]));
   if (!work.data?.canRequest) return null;
   return <>
-    <Button onClick={() => setOpen(true)}>发起仅退货</Button>
-    {open && <ReturnDialog action="request" title="发起仅退货" path={`${endpoint}/receipts/${receipt.receiptId}`}
+    <Button onClick={() => setOpen(true)}>发起退供</Button>
+    {open && <ReturnDialog action="request" title="发起退供" path={`${endpoint}/receipts/${receipt.receiptId}`}
       choices={byKey} loadingChoices={stocks.isLoading} choicesError={!!stocks.error} onClose={() => setOpen(false)}
       onSaved={() => { setOpen(false); void work.mutate(); }} />}
   </>;
@@ -119,7 +120,7 @@ function ReturnDialog({ action, title, path, source, max, choices, loadingChoice
     const body = action === 'ship' ? { quantity: values.quantity } : action === 'isolate'
       ? { requestId: newOperationId(), locationCode: values.locationCode, quantity: values.quantity }
       : { returnId: newOperationId(), batchNo: stock && stock.batchNo, locationId: stock && stock.locationId,
-        quantity: values.quantity, reason: values.reason };
+        quantity: values.quantity, reason: values.reason, replace: values.replace ?? false };
     await recovery.send({ path, action, body });
   };
   return <Modal title={title} open closable={!recovery.saving} keyboard={!recovery.saving} maskClosable={false}
@@ -134,7 +135,8 @@ function ReturnDialog({ action, title, path, source, max, choices, loadingChoice
     {choicesError && <Alert showIcon type="error" message="隔离库存查询失败" />}
     {action === 'request' && !loadingChoices && !choicesError && !choices?.size
       && <Alert showIcon type="info" message="该收货记录暂无已入隔离库位的次品" />}
-    <Form form={form} layout="vertical" onFinish={submit} disabled={recovery.saving || !!recovery.pending}>
+    <Form form={form} layout="vertical" initialValues={{ replace: false }} onFinish={submit}
+      disabled={recovery.saving || !!recovery.pending}>
       {action === 'request' && <Form.Item name="stockKey" label="原批次与隔离库位" rules={[{ required: true }]}>
         <Select aria-label="原批次与隔离库位" loading={loadingChoices}
           options={Array.from(choices ?? [], ([value, row]) => ({
@@ -151,6 +153,10 @@ function ReturnDialog({ action, title, path, source, max, choices, loadingChoice
       </Form.Item>
       {action === 'request' && <Form.Item name="reason" label="退货原因" rules={[{ required: true, whitespace: true }]}>
         <Input.TextArea aria-label="退货原因" maxLength={500} />
+      </Form.Item>}
+      {action === 'request' && <Form.Item name="replace" label="处理方式"
+        extra="选择补货时，按仓管确认实发的件数恢复原采购单待收。">
+        <Radio.Group options={[{ label: '仅退货', value: false }, { label: '退货并补货', value: true }]} />
       </Form.Item>}
       {action === 'ship' && <p>提交实发数量即结案，未发数量留在原隔离库位，可另行申请。</p>}
     </Form>

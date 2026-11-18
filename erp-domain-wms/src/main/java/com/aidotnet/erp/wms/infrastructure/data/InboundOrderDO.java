@@ -7,6 +7,10 @@ import java.time.Instant;
 
 @TableName("wms_inbound_order")
 public class InboundOrderDO {
+    private boolean replacement;
+
+    public boolean isReplacement() { return replacement; }
+    public void setReplacement(boolean replacement) { this.replacement = replacement; }
 
     @TableId(type = IdType.ASSIGN_ID)
     private String orderId;

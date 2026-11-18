@@ -9,5 +9,5 @@ public interface PurchaseSupplierReturns {
     record SupplierReturn(String returnId, String receiptId, String purchaseOrderId, String purchaseOrderLineId,
                           String batchNo, String warehouseId, String locationId, String locationCode, String sellerSku,
                           int requestedQuantity, String reason, String requestedBy, Instant requestedAt,
-                          Integer shippedQuantity, String shippedBy, Instant shippedAt) {}
+                          Integer shippedQuantity, String shippedBy, Instant shippedAt, boolean replace) {}
 }

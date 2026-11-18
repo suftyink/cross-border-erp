@@ -49,11 +49,11 @@ public class PurchaseReceiptService implements PurchaseReceiptOperations {
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public Receipt receive(String tenantId, String purchaseOrderId, String receiptId, String warehouseId,
-                           String operatorId, List<DeliveryLine> lines) {
+                           String operatorId, List<DeliveryLine> lines, boolean replacement) {
         inventory.lockReceivingWarehouse(tenantId, warehouseId);
         Instant receivedAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         InboundOrder order = new InboundOrder(receiptId, tenantId, warehouseId, REFERENCE_TYPE, purchaseOrderId,
-                InboundOrderStatus.COMPLETED, null, receivedAt, receivedAt, operatorId);
+                InboundOrderStatus.COMPLETED, null, receivedAt, receivedAt, operatorId, replacement);
         if (!orders.insertPurchaseReceipt(order)) {
             throw new BizException("RECEIPT_CONFLICT", "该收货编号已用于另一笔收货");
         }
@@ -78,6 +78,6 @@ public class PurchaseReceiptService implements PurchaseReceiptOperations {
                         line.batchNo(), line.receivedQuantity()))
                 .toList();
         return new Receipt(order.orderId(), order.referenceId(), order.warehouseId(), order.operatorId(),
-                order.createdAt(), lines);
+                order.createdAt(), lines, order.replacement());
     }
 }

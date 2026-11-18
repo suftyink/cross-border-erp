@@ -493,6 +493,10 @@ public class PurchaseStore {
         data.setReceivedQuantity(line.receivedQuantity());
         data.setOriginalQuantity(line.originalQuantity());
         data.setOverReceivedBeforeAmendment(line.overReceivedBeforeAmendment());
+        data.setReplacementPendingQuantity(line.replacement().pending());
+        data.setReplacementReceivedQuantity(line.replacement().received());
+        data.setReplacementToleranceQuantity(line.replacement().toleranceUsed());
+        data.setReplacementAmendmentQuantity(line.replacement().amendmentApplied());
         data.setUnitCost(line.unitCost());
         data.setTotalPrice(line.totalPrice());
         data.setExpectedDate(line.expectedDate());
@@ -512,7 +516,10 @@ public class PurchaseStore {
                         line.getExpectedDate(),
                         line.getOriginalQuantity() == null ? line.getQuantity() : line.getOriginalQuantity(),
                         line.getOverReceivedBeforeAmendment(),
-                        line.getQuantity()))
+                        line.getQuantity(),
+                        new PurchaseOrderLine.ReplacementProgress(line.getReplacementPendingQuantity(),
+                                line.getReplacementReceivedQuantity(), line.getReplacementToleranceQuantity(),
+                                line.getReplacementAmendmentQuantity()), 0))
                 .collect(Collectors.toList());
         return new PurchaseOrder(
                 data.getPoId(),
