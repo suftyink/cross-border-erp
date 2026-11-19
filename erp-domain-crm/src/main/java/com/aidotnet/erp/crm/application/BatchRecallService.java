@@ -7,6 +7,7 @@ import com.aidotnet.erp.crm.domain.BatchRecall;
 import com.aidotnet.erp.crm.infrastructure.mapper.BatchRecallMapper;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -62,6 +63,23 @@ public class BatchRecallService {
             throw conflict();
         }
         recalls.insertNotification(tenant, new BatchRecall.Notification(notificationId, lineId, channel, content.strip(), operator, Instant.now()));
+        return get(tenant, id);
+    }
+
+    @Transactional
+    public BatchRecall.Detail close(String tenant, String id, String lineId, String reason, int received, int confirmed, int unidentified, String operator) {
+        requireLine(tenant, id, lineId);
+        var line = recalls.lines(tenant, id).stream().filter(l -> l.lineId().equals(lineId)).findFirst().orElseThrow();
+        if (line.closedAt() != null) {
+            if (line.closeReason().equals(reason.strip()) && Objects.equals(line.closedReceivedQuantity(), received)
+                    && Objects.equals(line.closedConfirmedQuantity(), confirmed) && Objects.equals(line.closedUnidentifiedQuantity(), unidentified)) return get(tenant, id);
+            throw new BizException("RECALL_ALREADY_CLOSED", "该召回明细已异常结案，结案记录不能改写");
+        }
+        if (line.receivedQuantity() != received || line.confirmedQuantity() != confirmed || line.unidentifiedQuantity() != unidentified) {
+            throw new BizException("RECALL_CLOSE_SNAPSHOT_CHANGED", "实收或核实数量已变化，请刷新并重新核对后结案");
+        }
+        if (unidentified <= 0 || confirmed >= line.expectedQuantity()) throw new BizException("RECALL_CLOSE_NOT_REQUIRED", "仅仍有批次不明实收且召回未完成的明细可以异常结案");
+        recalls.closeLine(tenant, lineId, reason.strip(), operator, Instant.now(), received, confirmed, unidentified);
         return get(tenant, id);
     }
 

@@ -31,13 +31,14 @@ public class SalesReturnReceiptController {
     @PostMapping("/{id}/receipts")
     @RequirePermission(WRITE)
     public Result<SalesReturnOrders.Receipt> receive(@PathVariable UUID id, @Valid @RequestBody Receive request, Authentication auth) {
-        var user = current(auth); return Result.ok(service.receive(user.tenantId(), id.toString(), request.receiptId().toString(), request.batchNo().toString(), request.quantity(), user.userId()));
+        var user = current(auth); return Result.ok(service.receive(user.tenantId(), id.toString(), request.receiptId().toString(), request.batchNo() == null ? null : request.batchNo().toString(), request.quantity(), request.unidentified(), request.quarantineLocationCode(), request.unidentifiedReason(), user.userId()));
     }
     private boolean allowed(Authentication auth) { return auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_" + WRITE) || a.getAuthority().equals("ROLE_SUPER_ADMIN")); }
     private ErpUserDetails current(Authentication auth) {
         if (auth == null || !(auth.getDetails() instanceof ErpUserDetails user) || !user.tenantId().equals(TenantContext.getTenantId())) throw new AccessDeniedException("请使用当前租户的登录账号");
         return user;
     }
-    public record Receive(@NotNull UUID receiptId, @NotNull UUID batchNo, @Positive int quantity) {}
+    public record Receive(@NotNull UUID receiptId, UUID batchNo, @Positive int quantity, boolean unidentified,
+                          @Size(max = 128) String quarantineLocationCode, @Size(max = 500) String unidentifiedReason) {}
     public record Work(boolean canReceive, List<SalesReturnOrders.Order> orders) {}
 }

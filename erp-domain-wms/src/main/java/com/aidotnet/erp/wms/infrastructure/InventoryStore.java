@@ -92,8 +92,20 @@ public class InventoryStore {
         saveBalance(after);
         saveTransaction(new InventoryTransaction(UUID.randomUUID().toString(), tenantId, order.warehouseId(), order.sellerSku(),
                 InventoryTransaction.TransactionType.SALES_RETURN_RECEIVE, quantity, before.onHand(), before.reserved(), after.onHand(), after.reserved(),
-                "SALES_RETURN", order.returnId(), "销售退货实收转待检，收货编号 " + receipt.receiptId(), receipt.receivedAt(),
-                receipt.batchNo(), receipt.operatorId(), quantity, 0, 0));
+                "SALES_RETURN", order.returnId(), (receipt.batchNo() == null ? "批次不明退货实收，隔离库位 " + receipt.quarantineLocationCode() : "销售退货实收转待检") + "，收货编号 " + receipt.receiptId(), receipt.receivedAt(),
+                receipt.batchNo(), receipt.operatorId(), receipt.batchNo() == null ? 0 : quantity, 0, receipt.batchNo() == null ? quantity : 0,
+                null, receipt.quarantineLocationId(), null, null, null, null, 0));
+    }
+
+    public void identifySalesReturn(String tenant, String warehouse, String sku, com.aidotnet.erp.common.crm.SalesReturnOrders.Receipt receipt,
+                                    String batch, String operator) {
+        InventoryBalance balance = lockBalanceWithPurchaseStates(tenant, warehouse, sku)
+                .orElseThrow(() -> new BizException("INVENTORY_NOT_FOUND", "库存不存在"));
+        if (balance.frozen() < receipt.quantity()) throw new BizException("SALES_RETURN_STOCK_MISMATCH", "隔离退货与冻结库存不一致");
+        saveTransaction(new InventoryTransaction(UUID.randomUUID().toString(), tenant, warehouse, sku, InventoryTransaction.TransactionType.SALES_RETURN_IDENTIFY,
+                receipt.quantity(), balance.onHand(), balance.reserved(), balance.onHand(), balance.reserved(), "SALES_RETURN", receipt.returnId(),
+                "原批次不明收货 " + receipt.receiptId() + " 补录归属，原隔离库位内转待检并保持冻结", Instant.now(), batch, operator,
+                receipt.quantity(), 0, -receipt.quantity(), receipt.quarantineLocationId(), receipt.quarantineLocationId(), null, null, null, null, 0));
     }
 
     public void recordPurchaseDisposition(String tenantId, PurchaseInspectionBatch batch, String inspectionId,

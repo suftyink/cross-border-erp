@@ -36,7 +36,9 @@ public interface BatchRecallMapper {
     Receipt receipt(@Param("tenant") String tenant, @Param("id") String id);
     List<Receipt> receipts(@Param("tenant") String tenant, @Param("id") String id);
     void insertReceipt(@Param("tenant") String tenant, @Param("r") Receipt receipt);
+    void closeLine(@Param("tenant") String tenant, @Param("line") String line, @Param("reason") String reason, @Param("operator") String operator,
+                   @Param("at") Instant at, @Param("received") int received, @Param("confirmed") int confirmed, @Param("unidentified") int unidentified);
     void addReceived(@Param("tenant") String tenant, @Param("id") String id, @Param("quantity") int quantity);
-    void verify(@Param("tenant") String tenant, @Param("id") String id, @Param("operator") String operator, @Param("at") Instant at);
+    void verify(@Param("tenant") String tenant, @Param("id") String id, @Param("batch") String batch, @Param("operator") String operator, @Param("at") Instant at);
     void addConfirmed(@Param("tenant") String tenant, @Param("id") String id, @Param("quantity") int quantity);
 }

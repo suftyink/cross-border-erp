@@ -11,10 +11,10 @@ import { SalesBatchTrace } from './sales-batch-trace';
 const wms = '/wms/api/in/v1';
 const stockLabels: Record<string, string> = {
   PENDING_INSPECTION: '待检', PENDING_PUTAWAY: '待上架', QUARANTINED: '隔离', AVAILABLE: '可用', RESERVED: '已预占待拣', PICKED: '已拣（发货暂存）',
-  PENDING_REVIEW: '待复核', QUALITY_HOLD: '质检更正暂停',
+  UNIDENTIFIED_RETURN: '批次不明退货（隔离待核实）', PENDING_REVIEW: '待复核', QUALITY_HOLD: '质检更正暂停',
 };
 const movementLabels: Record<string, string> = {
-  SALES_RETURN_RECEIVE: '销售退货实收待检',
+  SALES_RETURN_RECEIVE: '销售退货实收', SALES_RETURN_IDENTIFY: '退货批次核实转待检',
   QUALITY_HOLD: '质检更正暂停', QUALITY_RELEASE: '主管取消预占', PUTAWAY_REVERSE: '撤销上架', SALES_UNPICK: '撤拣直接退待检', INSPECTION_WITHDRAW: '撤销质检判定', QUALITY_REINSPECT: '更正后重新全检',
   RECEIVE: '入库', RESERVE: '预占', RELEASE: '释放预占', DEDUCT: '出库', STOCK_ADJUST: '调整', SALES_PICK: '实拣转发货暂存',
   QUALITY_DISPOSITION: '质检判定', PURCHASE_PUTAWAY: '确认上架',
@@ -25,7 +25,7 @@ const movementLabels: Record<string, string> = {
 interface BatchBalance {
   sourceType: string;
   sourceDocumentId: string;
-  batchNo: string;
+  batchNo: string | null;
   receiptId: string;
   purchaseOrderId: string;
   warehouseId: string;
@@ -156,7 +156,7 @@ function InventoryLedger() {
             { title: '仓库', render: (_, item) => warehouseLabel(item.warehouseId) },
             { title: '库位', render: (_, item) => item.status === 'PICKED'
               ? `发货暂存（原库位 ${locationLabel(item.locationId, item.locationCode)}）` : locationLabel(item.locationId, item.locationCode) },
-            { title: 'SKU', dataIndex: 'sellerSku' }, { title: '收货批次', dataIndex: 'batchNo' },
+            { title: 'SKU', dataIndex: 'sellerSku' }, { title: '收货批次', dataIndex: 'batchNo', render: (value) => value ?? '批次不明' },
             { title: '供应商批号', dataIndex: 'supplierBatchNo' },
             { title: '库存状态', render: (_, item) => <Tag>{stockLabels[item.status] ?? item.status}</Tag> },
             { title: '结存', dataIndex: 'quantity' },
@@ -164,7 +164,7 @@ function InventoryLedger() {
               {item.sourceType === 'SALES_RETURN'
                 ? <Link href={`/wms/operations?salesReturnId=${encodeURIComponent(item.sourceDocumentId)}`}>销售退货实收</Link>
                 : <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(item.purchaseOrderId)}`}>收货记录</Link>}
-              <Link href={`/wms/inventory?tab=shipments&batchNo=${encodeURIComponent(item.batchNo)}`}>出库去向</Link>
+              {item.batchNo && <Link href={`/wms/inventory?tab=shipments&batchNo=${encodeURIComponent(item.batchNo)}`}>出库去向</Link>}
             </Space> },
           ]} /> },
         { key: 'movements', label: '库存流水', children: <Table<Movement> size="small" rowKey="transactionId"

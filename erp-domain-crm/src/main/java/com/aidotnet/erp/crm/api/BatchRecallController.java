@@ -24,8 +24,8 @@ public class BatchRecallController {
     public BatchRecallController(BatchRecallService recalls, SalesReturnOrderService returns) { this.recalls = recalls; this.returns = returns; }
     @GetMapping("/work")
     public Result<Work> work(@RequestParam(required = false) String batchNo, Authentication auth) {
-        var user = current(auth); boolean manage = allowed(auth, "crm:recall:write"), ret = allowed(auth, "crm:return:write");
-        return Result.ok(new Work(manage, ret, manage || ret ? recalls.list(user.tenantId(), batchNo) : List.of()));
+        var user = current(auth); boolean manage = allowed(auth, "crm:recall:write"), ret = allowed(auth, "crm:return:write"), close = allowed(auth, "crm:recall:close");
+        return Result.ok(new Work(manage, ret, close, manage || ret || close ? recalls.list(user.tenantId(), batchNo) : List.of()));
     }
     @GetMapping("/affected")
     @RequirePermission("crm:recall:write")
@@ -49,9 +49,16 @@ public class BatchRecallController {
     public Result<SalesReturnOrderService.Detail> createReturn(@PathVariable UUID id, @PathVariable UUID line, @Valid @RequestBody Return request, Authentication auth) {
         var user = current(auth); return Result.ok(returns.create(user.tenantId(), id.toString(), line.toString(), request.returnId().toString(), request.quantity(), user.userId()));
     }
+    @PostMapping("/{id}/lines/{line}/exception-close")
+    @RequirePermission("crm:recall:close")
+    public Result<BatchRecall.Detail> close(@PathVariable UUID id, @PathVariable UUID line, @Valid @RequestBody Close request, Authentication auth) {
+        var user = current(auth);
+        return Result.ok(recalls.close(user.tenantId(), id.toString(), line.toString(), request.reason(), request.expectedReceivedQuantity(),
+                request.expectedConfirmedQuantity(), request.expectedUnidentifiedQuantity(), user.userId()));
+    }
     static void requireReader(Authentication auth) {
         current(auth);
-        if (!allowed(auth, "crm:recall:write") && !allowed(auth, "crm:return:write") && !allowed(auth, "wms:return:write")) throw new AccessDeniedException("无召回退货查询权限");
+        if (!allowed(auth, "crm:recall:write") && !allowed(auth, "crm:return:write") && !allowed(auth, "wms:return:write") && !allowed(auth, "crm:recall:close")) throw new AccessDeniedException("无召回退货查询权限");
     }
     static boolean allowed(Authentication auth, String permission) {
         return auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_" + permission) || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
@@ -60,7 +67,9 @@ public class BatchRecallController {
         if (auth == null || !(auth.getDetails() instanceof ErpUserDetails user) || !user.tenantId().equals(TenantContext.getTenantId())) throw new AccessDeniedException("请使用当前租户的登录账号");
         return user;
     }
-    public record Work(boolean canRecall, boolean canReturn, List<BatchRecall> recalls) {}
+    public record Work(boolean canRecall, boolean canReturn, boolean canClose, List<BatchRecall> recalls) {}
+    public record Close(@NotBlank @Size(max = 500) String reason, @NotNull @PositiveOrZero Integer expectedReceivedQuantity,
+                        @NotNull @PositiveOrZero Integer expectedConfirmedQuantity, @NotNull @PositiveOrZero Integer expectedUnidentifiedQuantity) {}
     public record Create(@NotNull UUID recallId, @NotNull UUID batchNo, @NotBlank @Size(max = 500) String reason) {}
     public record Return(@NotNull UUID returnId, @Positive int quantity) {}
     public record Notification(@NotNull UUID notificationId, @NotNull BatchRecall.Channel channel, @NotBlank @Size(max = 1000) String content) {}

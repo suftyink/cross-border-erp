@@ -24,7 +24,10 @@
             COALESCE((SELECT SUM(r.quantity) FROM crm_sales_return r WHERE r.tenant_id=l.tenant_id AND r.recall_line_id=l.line_id),0) AS authorized_quantity,
             COALESCE((SELECT SUM(r.received_quantity) FROM crm_sales_return r WHERE r.tenant_id=l.tenant_id AND r.recall_line_id=l.line_id),0) AS received_quantity,
             COALESCE((SELECT SUM(r.confirmed_quantity) FROM crm_sales_return r WHERE r.tenant_id=l.tenant_id AND r.recall_line_id=l.line_id),0) AS confirmed_quantity,
-            (SELECT COUNT(*) FROM crm_recall_notification n WHERE n.tenant_id=l.tenant_id AND n.line_id=l.line_id) AS notification_count
+            (SELECT COUNT(*) FROM crm_recall_notification n WHERE n.tenant_id=l.tenant_id AND n.line_id=l.line_id) AS notification_count,
+            COALESCE((SELECT SUM(s.quantity) FROM crm_sales_return_receipt s JOIN crm_sales_return r ON r.tenant_id=s.tenant_id AND r.return_id=s.return_id
+                WHERE r.tenant_id=l.tenant_id AND r.recall_line_id=l.line_id AND s.batch_no IS NULL AND s.identified_batch_no IS NULL),0) AS unidentified_quantity,
+            l.close_reason,l.closed_by,l.closed_at,l.closed_expected_quantity,l.closed_received_quantity,l.closed_confirmed_quantity,l.closed_unidentified_quantity
         FROM crm_batch_recall_line l WHERE l.tenant_id=#{tenant} AND l.recall_id=#{recall} ORDER BY l.sales_order_id,l.outbound_id,l.line_id
     </select>
     <select id="lockLine" resultType="string">SELECT recall_id FROM crm_batch_recall_line WHERE tenant_id=#{tenant} AND line_id=#{line} FOR UPDATE</select>
@@ -52,7 +55,10 @@
         INSERT INTO crm_sales_return(tenant_id,return_id,recall_id,recall_line_id,sales_order_id,outbound_id,warehouse_id,seller_sku,expected_batch_no,source_receipt_id,purchase_order_id,quantity,created_by,created_at)
         VALUES (#{tenant},#{id},#{line.recallId},#{line.lineId},#{line.salesOrderId},#{line.outboundId},#{line.warehouseId},#{line.sellerSku},#{line.batchNo},#{line.sourceReceiptId},#{line.purchaseOrderId},#{quantity},#{operator},#{at})
     </insert>
-    <sql id="returnColumns">return_id,recall_id,recall_line_id,sales_order_id,outbound_id,warehouse_id,seller_sku,expected_batch_no,source_receipt_id,purchase_order_id,quantity,received_quantity,confirmed_quantity,created_by,created_at</sql>
+    <sql id="returnColumns">return_id,recall_id,recall_line_id,sales_order_id,outbound_id,warehouse_id,seller_sku,expected_batch_no,source_receipt_id,purchase_order_id,quantity,received_quantity,confirmed_quantity,
+        COALESCE((SELECT SUM(s.quantity) FROM crm_sales_return_receipt s WHERE s.tenant_id=crm_sales_return.tenant_id
+            AND s.return_id=crm_sales_return.return_id AND s.batch_no IS NULL AND s.identified_batch_no IS NULL),0) AS unidentified_quantity,created_by,created_at,
+        (SELECT c.closed_at IS NOT NULL FROM crm_batch_recall_line c WHERE c.tenant_id=crm_sales_return.tenant_id AND c.line_id=crm_sales_return.recall_line_id) AS recall_closed</sql>
     <select id="returnOrder" resultType="com.aidotnet.erp.common.crm.SalesReturnOrders$Order">
         SELECT <include refid="returnColumns"/> FROM crm_sales_return WHERE tenant_id=#{tenant} AND return_id=#{id}
     </select>
@@ -61,7 +67,7 @@
     <select id="returns" resultType="com.aidotnet.erp.common.crm.SalesReturnOrders$Order">
         SELECT <include refid="returnColumns"/> FROM crm_sales_return WHERE tenant_id=#{tenant} ORDER BY created_at DESC,return_id
     </select>
-    <sql id="receiptColumns">receipt_id,return_id,batch_no,quantity,operator_id,received_at,verified_by,verified_at</sql>
+    <sql id="receiptColumns">receipt_id,return_id,batch_no,quantity,operator_id,received_at,verified_by,verified_at,identified_batch_no,quarantine_location_id,quarantine_location_code,unidentified_reason</sql>
     <select id="receipt" resultType="com.aidotnet.erp.common.crm.SalesReturnOrders$Receipt">
         SELECT <include refid="receiptColumns"/> FROM crm_sales_return_receipt WHERE tenant_id=#{tenant} AND receipt_id=#{id}
     </select>
@@ -69,10 +75,15 @@
         SELECT <include refid="receiptColumns"/> FROM crm_sales_return_receipt WHERE tenant_id=#{tenant} AND return_id=#{id} ORDER BY received_at,receipt_id
     </select>
     <insert id="insertReceipt">
-        INSERT INTO crm_sales_return_receipt(tenant_id,receipt_id,return_id,batch_no,quantity,operator_id,received_at)
-        VALUES (#{tenant},#{r.receiptId},#{r.returnId},#{r.batchNo},#{r.quantity},#{r.operatorId},#{r.receivedAt})
+        INSERT INTO crm_sales_return_receipt(tenant_id,receipt_id,return_id,batch_no,quantity,operator_id,received_at,quarantine_location_id,quarantine_location_code,unidentified_reason)
+        VALUES (#{tenant},#{r.receiptId},#{r.returnId},#{r.batchNo},#{r.quantity},#{r.operatorId},#{r.receivedAt},#{r.quarantineLocationId},#{r.quarantineLocationCode},#{r.unidentifiedReason})
     </insert>
+    <update id="closeLine">
+        UPDATE crm_batch_recall_line SET close_reason=#{reason},closed_by=#{operator},closed_at=#{at},closed_expected_quantity=expected_quantity,
+            closed_received_quantity=#{received},closed_confirmed_quantity=#{confirmed},closed_unidentified_quantity=#{unidentified}
+        WHERE tenant_id=#{tenant} AND line_id=#{line} AND closed_at IS NULL
+    </update>
     <update id="addReceived">UPDATE crm_sales_return SET received_quantity=received_quantity+#{quantity} WHERE tenant_id=#{tenant} AND return_id=#{id}</update>
-    <update id="verify">UPDATE crm_sales_return_receipt SET verified_by=#{operator},verified_at=#{at} WHERE tenant_id=#{tenant} AND receipt_id=#{id}</update>
+    <update id="verify">UPDATE crm_sales_return_receipt SET identified_batch_no=#{batch},verified_by=#{operator},verified_at=#{at} WHERE tenant_id=#{tenant} AND receipt_id=#{id}</update>
     <update id="addConfirmed">UPDATE crm_sales_return SET confirmed_quantity=confirmed_quantity+#{quantity} WHERE tenant_id=#{tenant} AND return_id=#{id}</update>
 </mapper>

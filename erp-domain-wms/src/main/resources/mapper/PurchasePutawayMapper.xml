@@ -72,14 +72,14 @@
         <if test="filter.batchNo != null">AND l.batch_no = #{filter.batchNo}</if>
         <if test="!pendingOnly">
             UNION ALL
-            SELECT r.batch_no, r.receipt_id, r.purchase_order_id, r.warehouse_id, r.seller_sku, NULL, r.received_at,
-                   NULL, NULL, 'PENDING_INSPECTION', r.quantity, 'SALES_RETURN', r.return_id
+            SELECT COALESCE(r.identified_batch_no,r.batch_no), r.receipt_id, r.purchase_order_id, r.warehouse_id, r.seller_sku, NULL, r.received_at,
+                   r.quarantine_location_id, r.quarantine_location_code, CASE WHEN r.batch_no IS NULL AND r.identified_batch_no IS NULL THEN 'UNIDENTIFIED_RETURN' ELSE 'PENDING_INSPECTION' END, r.quantity, 'SALES_RETURN', r.return_id
             FROM wms_sales_return_receipt r WHERE r.tenant_id=#{tenantId}
             <if test="filter.warehouseId != null">AND r.warehouse_id=#{filter.warehouseId}</if>
             <if test="filter.purchaseOrderId != null">AND r.purchase_order_id=#{filter.purchaseOrderId}</if>
-            <if test="filter.locationId != null">AND FALSE</if>
+            <if test="filter.locationId != null">AND r.quarantine_location_id=#{filter.locationId}</if>
             <if test="filter.sellerSku != null">AND r.seller_sku=#{filter.sellerSku}</if>
-            <if test="filter.batchNo != null">AND r.batch_no=#{filter.batchNo}</if>
+            <if test="filter.batchNo != null">AND COALESCE(r.identified_batch_no,r.batch_no)=#{filter.batchNo}</if>
         </if>
         ORDER BY 7, 1, 10, 9
     </select>

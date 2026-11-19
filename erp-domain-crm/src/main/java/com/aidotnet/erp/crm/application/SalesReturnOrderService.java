@@ -1,6 +1,8 @@
 package com.aidotnet.erp.crm.application;
 
 import com.aidotnet.erp.common.crm.SalesReturnOrders;
+import com.aidotnet.erp.common.wms.SalesReturnIdentification;
+import java.util.Objects;
 import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.crm.infrastructure.mapper.BatchRecallMapper;
 import java.time.Instant;
@@ -12,7 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SalesReturnOrderService implements SalesReturnOrders {
     private final BatchRecallMapper returns;
-    public SalesReturnOrderService(BatchRecallMapper returns) { this.returns = returns; }
+    private final SalesReturnIdentification identification;
+    public SalesReturnOrderService(BatchRecallMapper returns, SalesReturnIdentification identification) { this.returns = returns; this.identification = identification; }
 
     @Override
     public Order getOrder(String tenant, String id) { return require(tenant, id); }
@@ -32,6 +35,7 @@ public class SalesReturnOrderService implements SalesReturnOrders {
             throw conflict();
         }
         var line = returns.lines(tenant, recall).stream().filter(l -> l.lineId().equals(lineId)).findFirst().orElseThrow();
+        if (line.closedAt() != null) throw new BizException("RECALL_LINE_CLOSED", "召回明细已结案，请沿用既有退货单处理已退实物");
         if (quantity <= 0 || quantity > line.expectedQuantity() - line.authorizedQuantity()) throw new BizException("SALES_RETURN_QUANTITY_INVALID", "退货数量不能超过目标批次尚未建退货单的实际发货量");
         returns.insertReturn(tenant, id, line, quantity, operator, Instant.now());
         return get(tenant, id);
@@ -53,10 +57,10 @@ public class SalesReturnOrderService implements SalesReturnOrders {
         Order order = lock(tenant, receipt.returnId());
         Receipt existing = returns.receipt(tenant, receipt.receiptId());
         if (existing != null) {
-            if (existing.returnId().equals(order.returnId()) && existing.batchNo().equals(receipt.batchNo()) && existing.quantity() == receipt.quantity()) return;
+            if (existing.returnId().equals(order.returnId()) && Objects.equals(existing.batchNo(), receipt.batchNo()) && existing.quantity() == receipt.quantity()) return;
             throw conflict();
         }
-        if (!order.expectedBatchNo().equals(receipt.batchNo())) throw new BizException("SALES_RETURN_BATCH_MISMATCH", "实物批次与目标召回批次不符");
+        if (receipt.batchNo() != null && !order.expectedBatchNo().equals(receipt.batchNo())) throw new BizException("SALES_RETURN_BATCH_MISMATCH", "实物批次与目标召回批次不符");
         if (receipt.quantity() <= 0 || receipt.quantity() > order.quantity() - order.receivedQuantity()) throw new BizException("SALES_RETURN_RECEIPT_EXCEEDED", "本次实收超过该退货单剩余应收数量");
         returns.insertReceipt(tenant, receipt);
         returns.addReceived(tenant, order.returnId(), receipt.quantity());
@@ -67,9 +71,10 @@ public class SalesReturnOrderService implements SalesReturnOrders {
         Order order = lock(tenant, id);
         Receipt receipt = returns.receipt(tenant, receiptId);
         if (receipt == null || !receipt.returnId().equals(id)) throw new BizException("SALES_RETURN_RECEIPT_NOT_FOUND", "收货记录不属于当前退货单");
-        if (!order.expectedBatchNo().equals(batch) || !receipt.batchNo().equals(batch)) throw new BizException("SALES_RETURN_BATCH_MISMATCH", "核实批次与实际退回和目标召回批次不符");
+        if (!order.expectedBatchNo().equals(batch) || (receipt.batchNo() != null && !receipt.batchNo().equals(batch))) throw new BizException("SALES_RETURN_BATCH_MISMATCH", "核实批次与实际退回和目标召回批次不符");
         if (receipt.verifiedAt() != null) return get(tenant, id);
-        returns.verify(tenant, receiptId, operator, Instant.now());
+        identification.identify(tenant, id, receiptId, batch, operator);
+        returns.verify(tenant, receiptId, batch, operator, Instant.now());
         returns.addConfirmed(tenant, id, receipt.quantity());
         return get(tenant, id);
     }

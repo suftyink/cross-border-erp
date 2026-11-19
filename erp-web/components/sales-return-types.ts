@@ -1,11 +1,11 @@
 export interface SalesReturnOrder {
   returnId: string; recallId: string; recallLineId: string; salesOrderId: string; outboundId: string;
   warehouseId: string; sellerSku: string; expectedBatchNo: string; sourceReceiptId: string; purchaseOrderId: string;
-  quantity: number; receivedQuantity: number; confirmedQuantity: number; pendingReceiptQuantity: number; status: string;
-  createdBy: string; createdAt: string;
+  quantity: number; receivedQuantity: number; confirmedQuantity: number; unidentifiedQuantity: number; pendingReceiptQuantity: number; status: string;
+  createdBy: string; createdAt: string; recallClosed: boolean;
 }
 export interface SalesReturnReceipt {
-  receiptId: string; returnId: string; batchNo: string; quantity: number; operatorId: string; receivedAt: string;
+  receiptId: string; returnId: string; batchNo?: string; identifiedBatchNo?: string; quarantineLocationId?: string; quarantineLocationCode?: string; unidentifiedReason?: string; unidentified: boolean; inventoryStatus: string; quantity: number; operatorId: string; receivedAt: string;
   verifiedBy?: string; verifiedAt?: string;
 }
 export interface SalesReturnDetail { order: SalesReturnOrder; receipts: SalesReturnReceipt[] }

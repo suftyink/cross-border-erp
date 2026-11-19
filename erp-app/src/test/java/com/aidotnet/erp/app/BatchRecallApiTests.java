@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 class BatchRecallApiTests {
     private static final String W = "/wms/api/in/v1", C = "/crm/api/in/v1/batch-recalls", R = "/crm/api/in/v1/sales-returns";
     private static final String RECALL = "crm:recall:write", RETURNS = "crm:return:write", RECEIVE = "wms:return:write";
+    private static final String CLOSE = "crm:recall:close";
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired JwtProvider jwt;
@@ -151,6 +152,133 @@ class BatchRecallApiTests {
                 .andExpect(jsonPath("$.data.sources[0].quantity").value(10));
     }
 
+    @Test
+    void unidentifiedReceiptIsQuarantinedWithoutClaimingTheExpectedBatchAndIdentificationPostsOnlyAStateTransfer() throws Exception {
+        Fixture f = fixture(6, 4);
+        call(f, post(W + "/warehouses/{id}/locations", f.warehouse()).content("{\"locationCode\":\"Q-01\",\"purpose\":\"QUARANTINE\"}"), "wms:location:write").andExpect(status().isOk());
+        String id = UUID.randomUUID().toString(); JsonNode recall = data(createRecall(f, id));
+        String line = recall.at("/lines/0/lineId").asText(), ret = UUID.randomUUID().toString(), receipt = UUID.randomUUID().toString();
+        createReturn(f, id, line, ret, 6).andExpect(status().isOk());
+        unidentified(f, ret, receipt, 4, "Q-01").andExpect(status().isOk()).andExpect(jsonPath("$.data.batchNo").isEmpty());
+        unidentified(f, ret, receipt, 4, "Q-01").andExpect(status().isOk());
+        stock(f).andExpect(jsonPath("$.data[0].onHand").value(4)).andExpect(jsonPath("$.data[0].quarantined").value(4))
+                .andExpect(jsonPath("$.data[0].pendingInspection").value(0)).andExpect(jsonPath("$.data[0].available").value(0));
+        call(f, get(C + "/{id}", id), RECALL).andExpect(jsonPath("$.data.lines[0].expectedQuantity").value(6))
+                .andExpect(jsonPath("$.data.lines[0].unidentifiedQuantity").value(4)).andExpect(jsonPath("$.data.lines[0].confirmedQuantity").value(0));
+        call(f, get(W + "/inventory-ledger/balances").param("batchNo", f.batch())).andExpect(jsonPath("$.data").isEmpty());
+        verify(f, ret, receipt, f.batch()).andExpect(status().isOk());
+        verify(f, ret, receipt, f.batch()).andExpect(status().isOk());
+        stock(f).andExpect(jsonPath("$.data[0].onHand").value(4)).andExpect(jsonPath("$.data[0].frozen").value(4))
+                .andExpect(jsonPath("$.data[0].quarantined").value(0)).andExpect(jsonPath("$.data[0].pendingInspection").value(4));
+        call(f, get(C + "/{id}", id), RECALL).andExpect(jsonPath("$.data.lines[0].confirmedQuantity").value(4))
+                .andExpect(jsonPath("$.data.lines[0].pendingQuantity").value(2)).andExpect(jsonPath("$.data.lines[0].unidentifiedQuantity").value(0));
+        call(f, get(R + "/{id}", ret), RETURNS).andExpect(jsonPath("$.data.receipts[0].batchNo").isEmpty())
+                .andExpect(jsonPath("$.data.receipts[0].identifiedBatchNo").value(f.batch()))
+                .andExpect(jsonPath("$.data.receipts[0].quarantineLocationCode").value("Q-01"));
+        JsonNode ledger = data(call(f, get(W + "/inventory-ledger/transactions").param("documentId", ret)));
+        assertThat(ledger.size()).isEqualTo(2);
+        assertThat(ledger.findValuesAsText("transactionType")).containsExactlyInAnyOrder("SALES_RETURN_RECEIVE", "SALES_RETURN_IDENTIFY");
+        call(f, get(W + "/sales-dispatch/trace").param("batchNo", f.batch())).andExpect(jsonPath("$.data[0].quantity").value(6));
+    }
+
+    @Test
+    void exceptionClosureRequiresAuthorityReasonAndCurrentCountsAndRetainsAnImmutableSnapshotDuringLaterReturnHandling() throws Exception {
+        Fixture f = fixture(6, 4);
+        call(f, post(W + "/warehouses/{id}/locations", f.warehouse()).content("{\"locationCode\":\"Q-01\",\"purpose\":\"QUARANTINE\"}"), "wms:location:write").andExpect(status().isOk());
+        String id = UUID.randomUUID().toString(), ret = UUID.randomUUID().toString(), receipt = UUID.randomUUID().toString();
+        String line = data(createRecall(f, id)).at("/lines/0/lineId").asText();
+        createReturn(f, id, line, ret, 6).andExpect(status().isOk());
+        unidentified(f, ret, receipt, 4, "Q-01").andExpect(status().isOk());
+        close(f, id, line, "多次核查仍无法识别批次", 4, 0, 4, RETURNS).andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        close(f, id, line, " ", 4, 0, 4, CLOSE).andExpect(status().isBadRequest());
+        close(f, id, line, "多次核查仍无法识别批次", 4, 0, 3, CLOSE).andExpect(jsonPath("$.code").value("RECALL_CLOSE_SNAPSHOT_CHANGED"));
+        close(f, id, line, "多次核查仍无法识别批次", 4, 0, 4, CLOSE).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.lines[0].status").value("EXCEPTION_CLOSED"))
+                .andExpect(jsonPath("$.data.lines[0].closedExpectedQuantity").value(6))
+                .andExpect(jsonPath("$.data.lines[0].closedConfirmedQuantity").value(0))
+                .andExpect(jsonPath("$.data.lines[0].closedUnidentifiedQuantity").value(4))
+                .andExpect(jsonPath("$.data.lines[0].closedBy").value("recall-manager"));
+        close(f, id, line, "多次核查仍无法识别批次", 4, 0, 4, CLOSE).andExpect(status().isOk());
+        close(f, id, line, "换个原因", 4, 0, 4, CLOSE).andExpect(jsonPath("$.code").value("RECALL_ALREADY_CLOSED"));
+        stock(f).andExpect(jsonPath("$.data[0].onHand").value(4)).andExpect(jsonPath("$.data[0].quarantined").value(4))
+                .andExpect(jsonPath("$.data[0].available").value(0));
+        createReturn(f, id, line, UUID.randomUUID().toString(), 1).andExpect(jsonPath("$.code").value("RECALL_LINE_CLOSED"));
+        createReturn(f, id, line, ret, 6).andExpect(status().isOk());
+        verify(f, ret, receipt, f.batch()).andExpect(status().isOk());
+        unidentified(f, ret, UUID.randomUUID().toString(), 1, "Q-01").andExpect(status().isOk());
+        call(f, get(C + "/{id}", id), CLOSE).andExpect(jsonPath("$.data.lines[0].status").value("EXCEPTION_CLOSED"))
+                .andExpect(jsonPath("$.data.lines[0].confirmedQuantity").value(4)).andExpect(jsonPath("$.data.lines[0].receivedQuantity").value(5))
+                .andExpect(jsonPath("$.data.lines[0].closedReceivedQuantity").value(4)).andExpect(jsonPath("$.data.lines[0].closedConfirmedQuantity").value(0))
+                .andExpect(jsonPath("$.data.lines[0].closedUnidentifiedQuantity").value(4));
+        stock(f).andExpect(jsonPath("$.data[0].onHand").value(5)).andExpect(jsonPath("$.data[0].pendingInspection").value(4))
+                .andExpect(jsonPath("$.data[0].quarantined").value(1)).andExpect(jsonPath("$.data[0].frozen").value(5));
+    }
+
+    @Test
+    void unidentifiedReceiptsRequireExplicitModeARealQuarantineBinAndReasonAndCannotBeAllocated() throws Exception {
+        Fixture f = fixture(6, 4); String id = UUID.randomUUID().toString(), ret = UUID.randomUUID().toString(), receipt = UUID.randomUUID().toString();
+        String line = data(createRecall(f, id)).at("/lines/0/lineId").asText(); createReturn(f, id, line, ret, 6).andExpect(status().isOk());
+        unidentified(f, ret, receipt, 4, "A-01").andExpect(jsonPath("$.code").value("SALES_RETURN_QUARANTINE_INVALID"));
+        unidentified(f, ret, receipt, 4, "Q-99").andExpect(jsonPath("$.code").value("SALES_RETURN_QUARANTINE_INVALID"));
+        call(f, post(W + "/sales-returns/{id}/receipts", ret).content("""
+                {"receiptId":"%s","quantity":4,"unidentified":true,"quarantineLocationCode":"Q-01","unidentifiedReason":" "}
+                """.formatted(receipt)), RECEIVE).andExpect(jsonPath("$.code").value("SALES_RETURN_RECEIPT_INVALID"));
+        call(f, post(W + "/sales-returns/{id}/receipts", ret).content("{\"receiptId\":\"" + receipt + "\",\"quantity\":4}"), RECEIVE)
+                .andExpect(jsonPath("$.code").value("SALES_RETURN_RECEIPT_INVALID"));
+        call(f, post(W + "/warehouses/{id}/locations", f.warehouse()).content("{\"locationCode\":\"Q-01\",\"purpose\":\"QUARANTINE\"}"), "wms:location:write").andExpect(status().isOk());
+        unidentified(f, ret, receipt, 7, "Q-01").andExpect(jsonPath("$.code").value("SALES_RETURN_RECEIPT_EXCEEDED"));
+        stock(f).andExpect(jsonPath("$.data[0].onHand").value(0));
+        unidentified(f, ret, receipt, 4, "Q-01").andExpect(status().isOk());
+        unidentified(f, ret, receipt, 4, "Q-99").andExpect(jsonPath("$.code").value("SALES_RETURN_REQUEST_CONFLICT"));
+        verify(f, ret, receipt, f.otherBatch()).andExpect(jsonPath("$.code").value("SALES_RETURN_BATCH_MISMATCH"));
+        call(f, get(W + "/inventory-ledger/balances").param("warehouseId", f.warehouse())).andExpect(jsonPath("$.data[0].status").value("UNIDENTIFIED_RETURN"))
+                .andExpect(jsonPath("$.data[0].batchNo").isEmpty()).andExpect(jsonPath("$.data[0].locationCode").value("Q-01"));
+        String order = data(call(f, post("/oms/api/in/v1/orders/import").content("""
+                {"platform":"Amazon","platformOrderNo":"%s","buyerName":"Buyer-%s","countryCode":"US","shippingAddress":"1 Main Street","currency":"USD",
+                 "lines":[{"lineId":"L1","sellerSku":"MUG-11","title":"Mug","quantity":1,"unitPrice":25,"estimatedUnitCost":10}]}
+                """.formatted(UUID.randomUUID(), UUID.randomUUID())))).path("orderId").asText();
+        call(f, patch("/oms/api/in/v1/orders/{id}/paid", order)).andExpect(status().isOk());
+        call(f, post("/oms/api/in/v1/orders/{id}/warehouse-work", order).content("{\"warehouseId\":\"" + f.warehouse() + "\"}"), "oms:warehouse:write")
+                .andExpect(jsonPath("$.code").value("SALES_PICK_INSUFFICIENT_STOCK"));
+        Fixture other = new Fixture("foreign-" + UUID.randomUUID(), null, null, null, null, null, null);
+        close(other, id, line, "无法核实", 4, 0, 4, CLOSE).andExpect(jsonPath("$.code").value("RECALL_LINE_NOT_FOUND"));
+        stock(f).andExpect(jsonPath("$.data[0].onHand").value(4)).andExpect(jsonPath("$.data[0].quarantined").value(4));
+    }
+
+    @Test
+    void concurrentUnidentifiedReceiptIdentificationAndClosureKeepOnePostingAndAConsistentClosureSnapshot() throws Exception {
+        Fixture f = fixture(6, 4); String id = UUID.randomUUID().toString(), ret = UUID.randomUUID().toString(), receipt = UUID.randomUUID().toString();
+        call(f, post(W + "/warehouses/{id}/locations", f.warehouse()).content("{\"locationCode\":\"Q-01\",\"purpose\":\"QUARANTINE\"}"), "wms:location:write").andExpect(status().isOk());
+        String line = data(createRecall(f, id)).at("/lines/0/lineId").asText(); createReturn(f, id, line, ret, 6).andExpect(status().isOk());
+        assertThat(race(() -> body(unidentified(f, ret, receipt, 4, "Q-01")), () -> body(unidentified(f, ret, receipt, 4, "Q-01"))))
+                .allSatisfy(r -> assertThat(r.path("success").asBoolean()).isTrue());
+        var results = race(() -> body(verify(f, ret, receipt, f.batch())), () -> body(close(f, id, line, "无法继续核实，异常结案", 4, 0, 4, CLOSE)));
+        assertThat(results.get(0).path("success").asBoolean()).isTrue();
+        if (results.get(1).path("success").asBoolean()) {
+            close(f, id, line, "无法继续核实，异常结案", 4, 0, 4, CLOSE).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.lines[0].closedConfirmedQuantity").value(0)).andExpect(jsonPath("$.data.lines[0].closedUnidentifiedQuantity").value(4));
+        } else assertThat(results.get(1).path("code").asText()).isEqualTo("RECALL_CLOSE_SNAPSHOT_CHANGED");
+        verify(f, ret, receipt, f.batch()).andExpect(status().isOk());
+        unidentified(f, ret, receipt, 4, "Q-01").andExpect(status().isOk());
+        JsonNode ledger = data(call(f, get(W + "/inventory-ledger/transactions").param("documentId", ret)));
+        assertThat(ledger.size()).isEqualTo(2);
+        stock(f).andExpect(jsonPath("$.data[0].onHand").value(4)).andExpect(jsonPath("$.data[0].pendingInspection").value(4))
+                .andExpect(jsonPath("$.data[0].quarantined").value(0)).andExpect(jsonPath("$.data[0].frozen").value(4));
+        call(f, get(C + "/{id}", id), RECALL).andExpect(jsonPath("$.data.lines[0].confirmedQuantity").value(4));
+    }
+
+    private ResultActions close(Fixture f, String id, String line, String reason, int received, int confirmed, int unidentified, String permission) throws Exception {
+        var body = json.createObjectNode().put("reason", reason).put("expectedReceivedQuantity", received)
+                .put("expectedConfirmedQuantity", confirmed).put("expectedUnidentifiedQuantity", unidentified);
+        return call(f, post(C + "/{id}/lines/{line}/exception-close", id, line).content(body.toString()), permission);
+    }
+
+    private ResultActions unidentified(Fixture f, String ret, String receipt, int quantity, String location) throws Exception {
+        return call(f, post(W + "/sales-returns/{id}/receipts", ret).content("""
+                {"receiptId":"%s","quantity":%d,"unidentified":true,"quarantineLocationCode":"%s","unidentifiedReason":"实物标签丢失"}
+                """.formatted(receipt, quantity, location)), RECEIVE);
+    }
+
     private List<JsonNode> race(Callable<JsonNode> a, Callable<JsonNode> b) throws Exception {
         var pool = Executors.newFixedThreadPool(2);var start = new CountDownLatch(1);
         try {var first = pool.submit(() -> {start.await();return a.call();});var second = pool.submit(() -> {start.await();return b.call();});
@@ -172,12 +300,13 @@ class BatchRecallApiTests {
         return call(f, post(R + "/{id}/receipts/{receipt}/verify", ret, receipt).content("{\"batchNo\":\"" + batch + "\"}"), RETURNS);
     }
     private ResultActions stock(Fixture f) throws Exception { return call(f, get(W + "/warehouses/{id}/inventory", f.warehouse())); }
-    private Fixture fixture() throws Exception {
+    private Fixture fixture() throws Exception { return fixture(10, 4); }
+    private Fixture fixture(int firstQuantity, int otherQuantity) throws Exception {
         Fixture f = new Fixture("recall-" + UUID.randomUUID(), null, null, null, null, null, null);
         String supplier = data(call(f, post("/scm/api/in/v1/suppliers").content("{\"name\":\"Recall supplier\",\"countryCode\":\"CN\"}"))).at("/supplier/supplierId").asText();
         String po = data(call(f, post("/scm/api/in/v1/purchase-orders").content("""
-                {"supplierId":"%s","currency":"USD","purchaseType":"MARKET","lines":[{"lineId":"L1","sellerSku":"MUG-11","quantity":14,"unitCost":10}]}
-                """.formatted(supplier)))).path("poId").asText();
+                {"supplierId":"%s","currency":"USD","purchaseType":"MARKET","lines":[{"lineId":"L1","sellerSku":"MUG-11","quantity":%d,"unitCost":10}]}
+                """.formatted(supplier, firstQuantity + otherQuantity)))).path("poId").asText();
         call(f, patch("/scm/api/in/v1/purchase-orders/{id}/submit", po)).andExpect(status().isOk());
         call(f, patch("/scm/api/in/v1/purchase-orders/{id}/approve", po)).andExpect(status().isOk());
         String wh = data(call(f, post(W + "/warehouses").content("{\"code\":\"RECALL11\",\"name\":\"Recall warehouse\",\"countryCode\":\"US\"}"))).path("warehouseId").asText();
@@ -185,7 +314,7 @@ class BatchRecallApiTests {
         call(f, post(W + "/warehouses/{id}/locations", wh).content("{\"locationCode\":\"A-01\",\"purpose\":\"GOOD\"}"), "wms:location:write").andExpect(status().isOk());
         String[] batches = new String[2];
         for (int i = 0; i < 2; i++) {
-            int quantity = i == 0 ? 10 : 4;
+            int quantity = i == 0 ? firstQuantity : otherQuantity;
             batches[i] = data(call(f, post(W + "/purchase-receipts/{id}", po).content("""
                     {"receiptId":"%s","warehouseId":"%s","receipts":[{"lineId":"L1","quantity":%d}]}
                     """.formatted(UUID.randomUUID(), wh, quantity)), "wms:receipt:write")).at("/lines/0/batchNo").asText();
@@ -197,8 +326,8 @@ class BatchRecallApiTests {
         }
         String order = data(call(f, post("/oms/api/in/v1/orders/import").content("""
                 {"platform":"Amazon","platformOrderNo":"%s","buyerName":"Buyer-%s","countryCode":"US","shippingAddress":"1 Main Street",
-                 "currency":"USD","lines":[{"lineId":"L1","sellerSku":"MUG-11","title":"Mug","quantity":14,"unitPrice":25,"estimatedUnitCost":10}]}
-                """.formatted(UUID.randomUUID(), UUID.randomUUID())))).path("orderId").asText();
+                 "currency":"USD","lines":[{"lineId":"L1","sellerSku":"MUG-11","title":"Mug","quantity":%d,"unitPrice":25,"estimatedUnitCost":10}]}
+                """.formatted(UUID.randomUUID(), UUID.randomUUID(), firstQuantity + otherQuantity)))).path("orderId").asText();
         call(f, patch("/oms/api/in/v1/orders/{id}/paid", order)).andExpect(status().isOk());
         JsonNode work = data(call(f, post("/oms/api/in/v1/orders/{id}/warehouse-work", order).content("{\"warehouseId\":\"" + wh + "\"}"), "oms:warehouse:write"));
         String outbound = work.path("outboundId").asText();
@@ -216,7 +345,7 @@ class BatchRecallApiTests {
         return new Fixture(f.tenant(), wh, po, batches[0], batches[1], order, outbound);
     }
     private ResultActions call(Fixture f, MockHttpServletRequestBuilder request, String... permissions) throws Exception {
-        String user = Set.of(permissions).contains(RECEIVE) ? "warehouse-clerk" : "after-sales";
+        String user = Set.of(permissions).contains(CLOSE) ? "recall-manager" : Set.of(permissions).contains(RECEIVE) ? "warehouse-clerk" : "after-sales";
         return mvc.perform(request.header("X-Tenant-Id", f.tenant()).header("Authorization", "Bearer " + jwt.createToken(f.tenant(), user, user, Set.of(permissions)))
                 .contentType(MediaType.APPLICATION_JSON));
     }

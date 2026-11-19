@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.SalesReturnReceiptMapper">
-    <sql id="columns">receipt_id,return_id,batch_no,quantity,operator_id,received_at,NULL::varchar AS verified_by,NULL::timestamptz AS verified_at</sql>
+    <sql id="columns">receipt_id,return_id,batch_no,quantity,operator_id,received_at,verified_by,verified_at,identified_batch_no,quarantine_location_id,quarantine_location_code,unidentified_reason</sql>
+    <select id="lock" resultType="string">SELECT receipt_id FROM wms_sales_return_receipt WHERE tenant_id=#{tenant} AND receipt_id=#{receipt} FOR UPDATE</select>
+    <select id="context" resultType="com.aidotnet.erp.wms.infrastructure.mapper.SalesReturnReceiptMapper$Context">
+        SELECT warehouse_id,seller_sku,expected_batch_no FROM wms_sales_return_receipt WHERE tenant_id=#{tenant} AND receipt_id=#{receipt}
+    </select>
+    <update id="identify">UPDATE wms_sales_return_receipt SET identified_batch_no=#{batch},verified_by=#{operator},verified_at=#{at} WHERE tenant_id=#{tenant} AND receipt_id=#{receipt}</update>
     <select id="find" resultType="com.aidotnet.erp.common.crm.SalesReturnOrders$Receipt">
         SELECT <include refid="columns"/> FROM wms_sales_return_receipt WHERE tenant_id=#{tenant} AND receipt_id=#{receipt}
     </select>
@@ -9,7 +14,7 @@
         SELECT <include refid="columns"/> FROM wms_sales_return_receipt WHERE tenant_id=#{tenant} AND return_id=#{id} ORDER BY received_at,receipt_id
     </select>
     <insert id="insert">
-        INSERT INTO wms_sales_return_receipt(tenant_id,receipt_id,return_id,batch_no,quantity,operator_id,received_at,warehouse_id,seller_sku,source_receipt_id,purchase_order_id)
-        VALUES (#{tenant},#{r.receiptId},#{o.returnId},#{r.batchNo},#{r.quantity},#{r.operatorId},#{r.receivedAt},#{o.warehouseId},#{o.sellerSku},#{o.sourceReceiptId},#{o.purchaseOrderId})
+        INSERT INTO wms_sales_return_receipt(tenant_id,receipt_id,return_id,batch_no,quantity,operator_id,received_at,warehouse_id,seller_sku,source_receipt_id,purchase_order_id,expected_batch_no,quarantine_location_id,quarantine_location_code,unidentified_reason)
+        VALUES (#{tenant},#{r.receiptId},#{o.returnId},#{r.batchNo},#{r.quantity},#{r.operatorId},#{r.receivedAt},#{o.warehouseId},#{o.sellerSku},#{o.sourceReceiptId},#{o.purchaseOrderId},#{o.expectedBatchNo},#{r.quarantineLocationId},#{r.quarantineLocationCode},#{r.unidentifiedReason})
     </insert>
 </mapper>

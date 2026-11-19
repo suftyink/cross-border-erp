@@ -97,6 +97,7 @@ public record InventoryTransaction(
         SALES_UNPICK,
         INSPECTION_WITHDRAW,
         QUALITY_REINSPECT,
-        SALES_RETURN_RECEIVE
+        SALES_RETURN_RECEIVE,
+        SALES_RETURN_IDENTIFY
     }
 }
