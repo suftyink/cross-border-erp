@@ -348,6 +348,7 @@ public class WarehouseOperationService {
     @Transactional
     public OutboundPackage weighOutboundPackage(String tenantId, String packageId, WeighOutboundPackageCommand command) {
         OutboundPackage outboundPackage = getOutboundPackage(tenantId, packageId);
+        ensureLegacyOutbound(getOutboundOrder(tenantId, outboundPackage.orderId()));
         if (outboundPackage.status() == OutboundPackageStatus.SHIPPED) {
             throw new BizException("OUTBOUND_PACKAGE_STATUS_INVALID", "shipped package cannot be weighed again");
         }

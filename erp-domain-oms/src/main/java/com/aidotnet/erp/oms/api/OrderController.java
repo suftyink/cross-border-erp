@@ -3,7 +3,9 @@ package com.aidotnet.erp.oms.api;
 import com.aidotnet.erp.common.api.Result;
 import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.common.tenant.TenantContext;
+import com.aidotnet.erp.common.security.ErpUserDetails;
 import com.aidotnet.erp.oms.application.OrderService;
+import com.aidotnet.erp.oms.application.OrderWarehouseService;
 import com.aidotnet.erp.oms.application.OrderService.ApplyPromotionCommand;
 import com.aidotnet.erp.oms.application.OrderService.CreateOrderStrategyCommand;
 import com.aidotnet.erp.oms.application.OrderService.ImportOrderCommand;
@@ -35,6 +37,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 
 /**
  * 订单管理控制器
@@ -51,14 +55,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController {
 
     private final OrderService orderService;
+    private final OrderWarehouseService warehouse;
 
     /**
      * 构造函数 - 依赖注入订单服务
      *
      * @param orderService 订单管理应用服务
      */
-    public OrderController(OrderService orderService) {
+    public OrderController(OrderService orderService, OrderWarehouseService warehouse) {
         this.orderService = orderService;
+        this.warehouse = warehouse;
     }
 
     @PostMapping("/import")
@@ -106,8 +112,21 @@ public class OrderController {
     }
 
     @PatchMapping("/{orderId}/ship")
-    public Result<SalesOrder> ship(@PathVariable String orderId) {
-        return Result.ok(orderService.ship(currentTenant(), orderId));
+    public Result<SalesOrder> ship(@PathVariable String orderId, Authentication auth) {
+        String tenantId = currentTenant();
+        if (auth != null && auth.getDetails() instanceof ErpUserDetails user && !tenantId.equals(user.tenantId())) {
+            throw new AccessDeniedException("请使用当前租户的登录账号");
+        }
+        if (warehouse.hasWarehouseWork(tenantId, orderId)) {
+            if (auth == null || !(auth.getDetails() instanceof ErpUserDetails user) || !tenantId.equals(user.tenantId())
+                    || auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_oms:warehouse:write")
+                        || a.getAuthority().equals("ROLE_SUPER_ADMIN"))) {
+                throw new AccessDeniedException("当前账号没有读取仓库发货结果的权限");
+            }
+            return Result.ok(warehouse.readShipmentResult(tenantId, orderId)
+                    .orElseThrow(() -> new BizException("ORDER_WAREHOUSE_WORK_NOT_FOUND", "订单仓储作业不存在")));
+        }
+        return Result.ok(orderService.ship(tenantId, orderId));
     }
 
     @PatchMapping("/{orderId}/deliver")

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.oms.infrastructure.mapper.WarehouseShipmentMapper">
+    <select id="exists" resultType="boolean">
+        SELECT EXISTS (SELECT 1 FROM oms_warehouse_shipment WHERE tenant_id = #{tenantId} AND package_id = #{packageId})
+    </select>
+    <insert id="insert">
+        INSERT INTO oms_warehouse_shipment(tenant_id, package_id, sales_order_id, outbound_id, shipped_at)
+        VALUES (#{tenantId}, #{s.packageId}, #{s.salesOrderId}, #{s.outboundId}, #{s.shippedAt})
+    </insert>
+    <insert id="insertLine">
+        INSERT INTO oms_warehouse_shipment_line(tenant_id, package_id, pick_id, sales_line_id, seller_sku, quantity)
+        VALUES (#{tenantId}, #{packageId}, #{line.pickId}, #{line.salesLineId}, #{line.sellerSku}, #{line.quantity})
+    </insert>
+    <select id="totals" resultType="com.aidotnet.erp.oms.infrastructure.mapper.WarehouseShipmentMapper$LineTotal">
+        SELECT l.sales_line_id, l.seller_sku, CAST(SUM(l.quantity) AS INT) AS quantity
+        FROM oms_warehouse_shipment_line l
+        JOIN oms_warehouse_shipment s ON s.tenant_id = l.tenant_id AND s.package_id = l.package_id
+        WHERE s.tenant_id = #{tenantId} AND s.sales_order_id = #{orderId}
+        GROUP BY l.sales_line_id, l.seller_sku
+    </select>
+    <update id="updateOrder">
+        UPDATE oms_sales_order SET status = #{status}, fulfillment_status = #{fulfillment}, updated_at = CURRENT_TIMESTAMP
+        WHERE tenant_id = #{tenantId} AND order_id = #{orderId}
+    </update>
+</mapper>

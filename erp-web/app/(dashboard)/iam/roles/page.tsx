@@ -17,10 +17,12 @@ const allPermissions = [
   'wms:receipt:write', 'wms:inspection:write', 'scm:supplier:tolerance:write', 'scm:purchase:amend',
   'wms:putaway:write', 'wms:location:write',
   'oms:warehouse:write', 'wms:pick:write',
+  'wms:ship:write',
   'wms:quarantine:write', 'scm:purchase-return:write', 'wms:purchase-return:ship',
 ];
 
 const permissionLabels: Record<string, string> = {
+  'wms:ship:write': '仓储 · 销售打包称重与实际发货',
   'oms:warehouse:write': '订单 · 下发仓储作业',
   'wms:pick:write': '仓储 · 登记实际拣货',
   'wms:receipt:write': '仓储 · 确认采购收货',

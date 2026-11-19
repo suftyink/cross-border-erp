@@ -27,12 +27,18 @@ public class SalesPickingController {
         ErpUserDetails user = current(auth);
         boolean canPick = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_" + WRITE)
                 || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
-        return Result.ok(new WorkList(canPick, canPick ? service.list(user.tenantId(), salesOrderId) : List.of()));
+        boolean canShip = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_wms:ship:write")
+                || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
+        return Result.ok(new WorkList(canPick, canShip, canPick || canShip ? service.list(user.tenantId(), salesOrderId) : List.of()));
     }
     @GetMapping("/{outboundId}")
-    @RequirePermission(WRITE)
     public Result<Work> get(@PathVariable UUID outboundId, Authentication auth) {
-        return Result.ok(service.get(current(auth).tenantId(), outboundId.toString()));
+        var user = current(auth);
+        if (auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_" + WRITE)
+                || a.getAuthority().equals("ROLE_wms:ship:write") || a.getAuthority().equals("ROLE_SUPER_ADMIN"))) {
+            throw new AccessDeniedException("当前账号没有查看拣货作业的权限");
+        }
+        return Result.ok(service.get(user.tenantId(), outboundId.toString()));
     }
     @PostMapping("/{outboundId}/picks")
     @RequirePermission(WRITE)
@@ -47,7 +53,7 @@ public class SalesPickingController {
                 || !user.tenantId().equals(TenantContext.getTenantId())) throw new AccessDeniedException("请使用当前租户的登录账号");
         return user;
     }
-    public record WorkList(boolean canPick, List<Work> orders) {}
+    public record WorkList(boolean canPick, boolean canShip, List<Work> orders) {}
     public record PickRequest(@NotNull UUID requestId, @NotNull UUID allocationId,
                               @NotBlank @Size(max = 128) String locationCode, @NotNull UUID batchNo, @Positive int quantity) {}
 }

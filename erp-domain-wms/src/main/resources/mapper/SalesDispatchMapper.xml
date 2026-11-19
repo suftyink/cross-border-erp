@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.SalesDispatchMapper">
+    <select id="packageOutbound" resultType="string">
+        SELECT order_id FROM wms_outbound_package WHERE tenant_id = #{tenantId} AND package_id = #{packageId}
+    </select>
+    <select id="packedQuantity" resultType="int">
+        SELECT COALESCE(SUM(quantity), 0) FROM wms_sales_package_pick WHERE tenant_id = #{tenantId} AND pick_id = #{pickId}
+    </select>
+    <insert id="insertPick">
+        INSERT INTO wms_sales_package_pick(tenant_id, package_id, pick_id, quantity)
+        VALUES (#{tenantId}, #{packageId}, #{pickId}, #{quantity})
+    </insert>
+    <sql id="sourceJoins">
+        FROM wms_sales_package_pick pp
+        JOIN wms_actual_pick k ON k.tenant_id = pp.tenant_id AND k.request_id = pp.pick_id
+        JOIN wms_outbound_allocation a ON a.tenant_id = k.tenant_id AND a.allocation_id = k.allocation_id
+        JOIN wms_warehouse_location p ON p.tenant_id = a.tenant_id AND p.location_id = a.location_id
+        JOIN wms_inbound_order_line l ON l.tenant_id = a.tenant_id AND l.batch_no = a.batch_no
+        JOIN wms_inbound_order o ON o.tenant_id = l.tenant_id AND o.order_id = l.order_id
+    </sql>
+    <select id="lines" resultType="com.aidotnet.erp.common.wms.WarehouseShipments$Line">
+        SELECT pp.pick_id, a.allocation_id, a.line_id, a.sales_line_id, a.seller_sku, a.location_id,
+               COALESCE(p.location_code, p.barcode) AS location_code, a.batch_no, o.order_id, o.reference_id, pp.quantity
+        <include refid="sourceJoins"/>
+        WHERE pp.tenant_id = #{tenantId} AND pp.package_id = #{packageId}
+        ORDER BY a.seller_sku, a.batch_no, a.location_id, pp.pick_id
+    </select>
+    <update id="deduct">
+        UPDATE wms_batch_location_balance
+        SET quantity = quantity - #{line.quantity}, reserved_quantity = reserved_quantity - #{line.quantity},
+            picked_quantity = picked_quantity - #{line.quantity}
+        WHERE tenant_id = #{tenantId} AND batch_no = #{line.batchNo} AND location_id = #{line.locationId}
+          AND seller_sku = #{line.sellerSku} AND quantity &gt;= #{line.quantity}
+          AND reserved_quantity &gt;= #{line.quantity} AND picked_quantity &gt;= #{line.quantity}
+    </update>
+    <select id="physicalQuantity" resultType="int">
+        SELECT quantity - picked_quantity FROM wms_batch_location_balance
+        WHERE tenant_id = #{tenantId} AND batch_no = #{line.batchNo} AND location_id = #{line.locationId}
+    </select>
+    <select id="shippedQuantity" resultType="int">
+        SELECT COALESCE(SUM(pp.quantity), 0) FROM wms_sales_package_pick pp
+        JOIN wms_outbound_package p ON p.tenant_id = pp.tenant_id AND p.package_id = pp.package_id
+        WHERE pp.tenant_id = #{tenantId} AND p.order_id = #{outboundId} AND p.status = 'SHIPPED'
+    </select>
+    <insert id="insertShipment">
+        INSERT INTO wms_sales_shipment(tenant_id, package_id, outbound_id, operator_id, shipped_at)
+        VALUES (#{tenantId}, #{packageId}, #{outboundId}, #{operatorId}, #{at})
+    </insert>
+    <select id="state" resultType="com.aidotnet.erp.wms.infrastructure.mapper.SalesDispatchMapper$DeliveryState">
+        SELECT operator_id, oms_sync_status, sync_error FROM wms_sales_shipment
+        WHERE tenant_id = #{tenantId} AND package_id = #{packageId}
+    </select>
+    <select id="lockShipment" resultType="string">
+        SELECT oms_sync_status FROM wms_sales_shipment WHERE tenant_id = #{tenantId} AND package_id = #{packageId} FOR UPDATE
+    </select>
+    <update id="markSynced">
+        UPDATE wms_sales_shipment SET oms_sync_status = 'SYNCED', sync_error = NULL,
+            sync_attempts = sync_attempts + 1, synced_at = CURRENT_TIMESTAMP
+        WHERE tenant_id = #{tenantId} AND package_id = #{packageId}
+    </update>
+    <update id="markFailed">
+        UPDATE wms_sales_shipment SET sync_error = '订单回写失败，可重试', sync_attempts = sync_attempts + 1
+        WHERE tenant_id = #{tenantId} AND package_id = #{packageId} AND oms_sync_status = 'PENDING'
+    </update>
+    <!-- 仅后台回写作业跨租户领取凭证；每次实际处理前恢复对应租户上下文。 -->
+    <select id="pending" resultType="com.aidotnet.erp.wms.infrastructure.mapper.SalesDispatchMapper$PendingDelivery">
+        SELECT tenant_id, package_id FROM wms_sales_shipment WHERE oms_sync_status = 'PENDING'
+        ORDER BY sync_attempts, shipped_at, tenant_id, package_id LIMIT 100
+    </select>
+    <select id="packagesForOrder" resultType="string">
+        SELECT p.package_id FROM wms_outbound_package p
+        JOIN wms_sales_pick_work w ON w.tenant_id = p.tenant_id AND w.outbound_id = p.order_id
+        WHERE p.tenant_id = #{tenantId} AND w.sales_order_id = #{salesOrderId}
+        ORDER BY p.created_at, p.package_id
+    </select>
+    <select id="trace" resultType="com.aidotnet.erp.common.wms.WarehouseShipments$Trace">
+        SELECT pp.package_id, a.outbound_id, w.sales_order_id, p.warehouse_id, pp.pick_id, a.sales_line_id,
+               a.seller_sku, a.location_id, COALESCE(p.location_code, p.barcode) AS location_code,
+               a.batch_no, o.order_id, o.reference_id, pp.quantity, s.shipped_at, s.operator_id
+        <include refid="sourceJoins"/>
+        JOIN wms_sales_shipment s ON s.tenant_id = pp.tenant_id AND s.package_id = pp.package_id
+        JOIN wms_sales_pick_work w ON w.tenant_id = a.tenant_id AND w.outbound_id = a.outbound_id
+        WHERE pp.tenant_id = #{tenantId}
+        <if test="filter.purchaseOrderId != null">AND o.reference_id = #{filter.purchaseOrderId}</if>
+        <if test="filter.batchNo != null">AND a.batch_no = #{filter.batchNo}</if>
+        <if test="filter.salesOrderId != null">AND w.sales_order_id = #{filter.salesOrderId}</if>
+        <if test="filter.outboundId != null">AND a.outbound_id = #{filter.outboundId}</if>
+        <if test="filter.packageId != null">AND pp.package_id = #{filter.packageId}</if>
+        <if test="filter.warehouseId != null">AND p.warehouse_id = #{filter.warehouseId}</if>
+        <if test="filter.locationId != null">AND a.location_id = #{filter.locationId}</if>
+        <if test="filter.sellerSku != null">AND a.seller_sku = #{filter.sellerSku}</if>
+        ORDER BY s.shipped_at DESC, pp.package_id, pp.pick_id
+    </select>
+</mapper>

@@ -107,6 +107,9 @@ public class SalesPickingService implements SalesOrderPicking {
         List<Allocation> allocations = picks.allocations(tenantId, outboundId);
         String status = allocations.stream().allMatch(a -> a.pickedQuantity() == a.plannedQuantity()) ? "PICKED"
                 : allocations.stream().anyMatch(a -> a.pickedQuantity() > 0) ? "PICKING" : "RESERVED";
+        if (order.status() == OutboundOrderStatus.SHIPPED) status = "SHIPPED";
+        else if (orders.listOutboundPackages(tenantId, outboundId).stream()
+                .anyMatch(p -> p.status() == com.aidotnet.erp.wms.domain.OutboundPackageStatus.SHIPPED)) status = "PARTIALLY_SHIPPED";
         return new Work(outboundId, order.referenceId(), order.warehouseId(), status,
                 allocations, picks.picks(tenantId, outboundId));
     }

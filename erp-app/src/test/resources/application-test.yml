@@ -65,6 +65,8 @@ logging:
     org.springframework.web: INFO
 
 erp:
+  wms:
+    sales-shipment-sync-enabled: false
   jwt:
     secret: ${ERP_JWT_SECRET:changeme-must-be-at-least-256-bits-long}
     expiration-seconds: 7200

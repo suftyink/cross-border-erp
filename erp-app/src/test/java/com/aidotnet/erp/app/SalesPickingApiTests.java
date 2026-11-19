@@ -100,8 +100,8 @@ class SalesPickingApiTests {
                 .andExpect(jsonPath("$.code").value("ORDER_WAREHOUSE_WORK_EXISTS"));
         call(f, post(SALES + "/{id}/fulfillment-plans/generate", order))
                 .andExpect(jsonPath("$.code").value("ORDER_WAREHOUSE_WORK_EXISTS"));
-        call(f, patch(SALES + "/{id}/ship", order))
-                .andExpect(jsonPath("$.code").value("ORDER_WAREHOUSE_WORK_EXISTS"));
+        call(f, patch(SALES + "/{id}/ship", order), "oms:warehouse:write")
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("PAID"));
         call(f, post(SALES + "/{id}/refunds", order).content("{\"reason\":\"Cancel paid order\",\"refundType\":\"FULL\"}"))
                 .andExpect(jsonPath("$.code").value("ORDER_WAREHOUSE_WORK_EXISTS"));
         call(f, post(SALES + "/risk-alerts").content("""

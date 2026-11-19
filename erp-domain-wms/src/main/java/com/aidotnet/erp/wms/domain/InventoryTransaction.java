@@ -72,6 +72,7 @@ public record InventoryTransaction(
         PURCHASE_PUTAWAY,
         PURCHASE_QUARANTINE,
         PURCHASE_SUPPLIER_RETURN,
-        SALES_PICK
+        SALES_PICK,
+        SALES_SHIP
     }
 }

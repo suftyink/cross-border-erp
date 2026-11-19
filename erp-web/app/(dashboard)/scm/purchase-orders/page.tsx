@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Alert, Table, Button, Modal, Form, Input, InputNumber, Select, Space, message, Card, Typography, Badge } from 'antd';
 import { PlusOutlined, CheckOutlined } from '@ant-design/icons';
 import { useApi } from '@/lib/hooks';
@@ -18,6 +19,11 @@ const poStatusMap: Record<string, { color: string; text: string }> = {
 };
 
 export default function PurchaseOrdersPage() {
+  return <Suspense fallback={<Typography.Text>正在加载采购单…</Typography.Text>}><PurchaseOrdersContent /></Suspense>;
+}
+
+function PurchaseOrdersContent() {
+  const sourcePoId = useSearchParams().get('poId');
   const [selectedStatus, setSelectedStatus] = useState<string>();
   const [modalOpen, setModalOpen] = useState(false);
   const [details, setDetails] = useState<{ order: PurchaseOrder; amend: boolean }>();
@@ -64,6 +70,7 @@ export default function PurchaseOrdersPage() {
           onClick={() => setDetails({ order: r, amend: true })}>采购变更</Button>}
         <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(r.poId)}`}>收货记录</Link>
         <Link href={`/wms/inventory?purchaseOrderId=${encodeURIComponent(r.poId)}`}>批次结存</Link>
+        <Link href={`/wms/inventory?purchaseOrderId=${encodeURIComponent(r.poId)}&tab=shipments`}>出库去向</Link>
       </Space>
     ) },
   ];
@@ -80,9 +87,10 @@ export default function PurchaseOrdersPage() {
         </Space>
       </div>
       {error && <Alert type="error" showIcon message="采购单加载失败" />}
+      {sourcePoId && <Link href="/scm/purchase-orders">查看全部采购单</Link>}
       <Card style={{ borderRadius: 8 }}>
         <Table rowKey="poId" columns={columns} loading={isLoading} size="middle"
-          dataSource={(data ?? []).filter((order) => !selectedStatus || order.status === selectedStatus)}
+          dataSource={(data ?? []).filter((order) => (!selectedStatus || order.status === selectedStatus) && (!sourcePoId || order.poId === sourcePoId))}
           pagination={{ pageSize: 20 }} />
       </Card>
       {details && <PurchaseDetails order={details.order} amend={details.amend} onClose={() => setDetails(undefined)}

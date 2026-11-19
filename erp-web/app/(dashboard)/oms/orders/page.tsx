@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Table, Card, Typography, Tag, Space, Input, Select, DatePicker, Button, Badge, Descriptions, Modal, message, Tabs, Dropdown, Popconfirm, Form, InputNumber } from 'antd';
 import { SearchOutlined, EyeOutlined, SyncOutlined, ImportOutlined, DollarOutlined, CloseCircleOutlined, RollbackOutlined } from '@ant-design/icons';
 import { useApi } from '@/lib/hooks';
@@ -8,6 +9,7 @@ import { get } from '@/lib/api/client';
 import { omsApi } from '@/lib/api';
 import type { Order, PageParams } from '@/types';
 import { WarehouseDispatch } from './warehouse-dispatch';
+import { OrderWarehouseShipments } from './warehouse-shipments';
 
 interface OrderResponse extends Omit<Order, 'items' | 'orderNo' | 'customerName'> {
   platformOrderNo: string; buyerName: string;
@@ -34,8 +36,16 @@ const statusMap: Record<string, { color: string; text: string }> = {
 };
 
 export default function OrdersPage() {
+  return <Suspense fallback={<Typography.Text>正在加载订单…</Typography.Text>}><OrdersContent /></Suspense>;
+}
+
+function OrdersContent() {
+  const search = useSearchParams();
+  const sourceOrderId = search.get('orderId');
+  const sourceTab = search.get('tab');
   const [params, setParams] = useState<PageParams & Record<string, unknown>>({ page: 1, size: 20 });
   const [detailOpen, setDetailOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState('basic');
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
@@ -44,19 +54,21 @@ export default function OrdersPage() {
   const [refundForm] = Form.useForm();
   const { data: orders, mutate, isLoading, error } = useApi<OrderResponse[]>('/oms/api/in/v1/orders');
   useEffect(() => {
-    const orderId = new URLSearchParams(window.location.search).get('orderId');
-    if (orderId) setParams((p) => ({ ...p, orderId }));
-  }, []);
+    setParams((p) => ({ ...p, page: 1 }));
+    if (sourceOrderId && sourceTab === 'warehouse') void showDetail(sourceOrderId, 'warehouse');
+    else setDetailOpen(false);
+  }, [sourceOrderId, sourceTab]);
   const filtered = (orders ?? []).map(displayOrder).filter((order) =>
-    (!params.orderId || order.orderId === params.orderId)
+    (!sourceOrderId || order.orderId === sourceOrderId)
     && (!params.keyword || `${order.orderNo} ${order.customerName}`.toLowerCase().includes(String(params.keyword).toLowerCase()))
     && (!params.platform || order.platform.toUpperCase() === params.platform)
     && (!params.status || order.status === params.status));
 
-  const showDetail = async (orderId: string) => {
+  const showDetail = async (orderId: string, tab = 'basic') => {
     try {
       const order = await get<OrderResponse>(`/oms/api/in/v1/orders/${encodeURIComponent(orderId)}`);
       setCurrentOrder(displayOrder(order));
+      setDetailTab(tab);
       setDetailOpen(true);
     } catch { message.error('获取订单详情失败'); }
   };
@@ -168,7 +180,9 @@ export default function OrdersPage() {
 
       <Modal title="订单详情" open={detailOpen} onCancel={() => setDetailOpen(false)} footer={null} width={800}>
         {currentOrder && (
-          <Tabs items={[
+          <Tabs activeKey={detailTab} onChange={setDetailTab} items={[
+            { key: 'warehouse', label: '仓储履约', children: <OrderWarehouseShipments orderId={currentOrder.orderId}
+              onChange={() => { void mutate(); void showDetail(currentOrder.orderId, 'warehouse'); }} /> },
             {
               key: 'basic',
               label: '基本信息',

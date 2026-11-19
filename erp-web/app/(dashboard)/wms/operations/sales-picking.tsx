@@ -9,6 +9,7 @@ import { useApi } from '@/lib/hooks';
 import { useAuthStore } from '@/lib/store';
 import type { Warehouse } from '@/types';
 import { newOperationId } from './operation-id';
+import { SalesDispatch } from './sales-dispatch';
 
 interface Allocation {
   allocationId: string; lineId: string; salesLineId: string; sellerSku: string;
@@ -26,12 +27,12 @@ interface Work {
 type PickValues = { locationCode: string; batchNo: string; quantity: number };
 type Attempt = PickValues & { requestId: string; allocationId: string; outboundId: string };
 const endpoint = '/wms/api/in/v1/sales-picking';
-const labels: Record<string, string> = { RESERVED: '已预占待拣', PICKING: '拣货中', PICKED: '已拣齐待发货' };
+const labels: Record<string, string> = { RESERVED: '已预占待拣', PICKING: '拣货中', PICKED: '已拣齐待发货', PARTIALLY_SHIPPED: '部分已发货', SHIPPED: '已全部发货' };
 
 export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOrderId: string | null; outboundId: string | null; warehouses: Warehouse[] }) {
   const tenant = useAuthStore((s) => s.tenantId);
   const storageKey = `wms:pending-sales-pick:${tenant}`;
-  const work = useApi<{ canPick: boolean; orders: Work[] }>(`${endpoint}/work${salesOrderId ? `?salesOrderId=${encodeURIComponent(salesOrderId)}` : ''}`);
+  const work = useApi<{ canPick: boolean; canShip: boolean; orders: Work[] }>(`${endpoint}/work${salesOrderId ? `?salesOrderId=${encodeURIComponent(salesOrderId)}` : ''}`);
   const [selectedId, setSelectedId] = useState<string | undefined>(outboundId ?? undefined);
   const selected = work.data?.orders.find((o) => o.outboundId === selectedId);
   const [allocation, setAllocation] = useState<Allocation>();
@@ -77,13 +78,13 @@ export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOr
   };
 
   return <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-    <Alert type="info" showIcon message="按计划扫描实际库位与批次，可分多次登记。已拣货物进入发货暂存区，仍计入在手并保留订单预占。" />
+    <Alert type="info" showIcon message="按计划扫描实际库位与批次，可分多次登记。已拣未发货物在发货暂存区，计入在手并保留订单预占。" />
     {work.error && <Alert type="error" showIcon message="拣货待办加载失败" action={<Button onClick={() => void work.mutate()}>重试加载</Button>} />}
     {error && <Alert type="error" showIcon message={error} />}
     {work.data?.canPick === false && <Alert type="info" showIcon message="当前账号没有实拣登记权限" />}
     {pending && <Alert type="warning" showIcon message={`实拣结果待确认 · ${pending.locationCode} · ${pending.quantity} 件`}
-      action={<Button loading={saving} onClick={() => void submit(pending)}>重试原实拣</Button>} />}
-    {(work.isLoading || work.data?.canPick) && <Card title="销售拣货待办">
+      action={<Button loading={saving} disabled={!work.data?.canPick} onClick={() => void submit(pending)}>重试原实拣</Button>} />}
+    {(work.isLoading || work.data?.canPick || work.data?.canShip) && <Card title="销售拣货待办">
       <Table<Work> rowKey="outboundId" loading={work.isLoading} dataSource={work.data?.orders ?? []} scroll={{ x: 'max-content' }} columns={[
         { title: '出库单', dataIndex: 'outboundId' },
         { title: '销售订单', render: (_, row) => <Link href={`/oms/orders?orderId=${encodeURIComponent(row.salesOrderId)}`}>{row.salesOrderId}</Link> },
@@ -97,7 +98,8 @@ export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOr
       <Descriptions size="small" items={[
         { key: 'order', label: '销售订单', children: selected.salesOrderId },
         { key: 'status', label: '状态', children: labels[selected.status] },
-        { key: 'staging', label: '实物去向', children: '发货暂存区' },
+        { key: 'staging', label: '实物去向', children: selected.status === 'SHIPPED' ? '已实际交运'
+          : selected.status === 'PARTIALLY_SHIPPED' ? '部分已交运，其余发货暂存' : '发货暂存区' },
       ]} />
       <Table<Allocation> size="small" rowKey="allocationId" dataSource={selected.allocations} pagination={false} scroll={{ x: 'max-content' }} columns={[
         { title: '订单行', dataIndex: 'salesLineId' }, { title: 'SKU', dataIndex: 'sellerSku' },
@@ -105,10 +107,10 @@ export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOr
         { title: '计划', dataIndex: 'plannedQuantity' }, { title: '已拣', dataIndex: 'pickedQuantity' },
         { title: '待拣', render: (_, row) => row.plannedQuantity - row.pickedQuantity },
         { title: '采购来源', render: (_, row) => <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(row.purchaseOrderId)}&batchNo=${encodeURIComponent(row.batchNo)}`}>来源收货批次</Link> },
-        { title: '操作', render: (_, row) => <Button disabled={!!pending || row.pickedQuantity === row.plannedQuantity}
+        { title: '操作', render: (_, row) => <Button disabled={!work.data?.canPick || !!pending || row.pickedQuantity === row.plannedQuantity}
           onClick={() => { setAllocation(row); setError(undefined); }}>登记实拣</Button> },
       ]} />
-      <Typography.Title level={5}>实际拣货 · 发货暂存</Typography.Title>
+      <Typography.Title level={5}>实际拣货记录</Typography.Title>
       <Table<ActualPick> rowKey="requestId" dataSource={selected.picks} size="small" pagination={false} scroll={{ x: 'max-content' }} columns={[
         { title: '实拣库位', dataIndex: 'locationCode' }, { title: '实拣批次', dataIndex: 'batchNo' },
         { title: 'SKU', dataIndex: 'sellerSku' }, { title: '件数', dataIndex: 'quantity' },
@@ -117,6 +119,8 @@ export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOr
         { title: '来源', render: (_, row) => <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(row.purchaseOrderId)}&batchNo=${encodeURIComponent(row.batchNo)}`}>采购收货批次</Link> },
       ]} />
     </Card>}
+    {selected && <SalesDispatch key={selected.outboundId} outboundId={selected.outboundId} picks={selected.picks}
+      canShip={!!work.data?.canShip} onChange={() => work.mutate()} />}
     {selected && allocation && <PickDialog allocation={allocation} saving={saving} pending={pending} error={error}
       onClose={() => setAllocation(undefined)} onSubmit={(values) => void submit(pending ?? {
         ...values, outboundId: selected.outboundId, allocationId: allocation.allocationId, requestId: newOperationId(),

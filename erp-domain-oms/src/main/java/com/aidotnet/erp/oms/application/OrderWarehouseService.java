@@ -6,6 +6,7 @@ import com.aidotnet.erp.oms.domain.OrderStatus;
 import com.aidotnet.erp.oms.domain.SalesOrder;
 import com.aidotnet.erp.oms.infrastructure.OrderStore;
 import com.aidotnet.erp.oms.infrastructure.FulfillmentPlanStore;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,10 +15,13 @@ public class OrderWarehouseService {
     private final OrderStore orders;
     private final FulfillmentPlanStore plans;
     private final SalesOrderPicking picking;
-    public OrderWarehouseService(OrderStore orders, FulfillmentPlanStore plans, SalesOrderPicking picking) {
+    private final WarehouseShipmentService shipments;
+    public OrderWarehouseService(OrderStore orders, FulfillmentPlanStore plans, SalesOrderPicking picking,
+                                  WarehouseShipmentService shipments) {
         this.orders = orders;
         this.plans = plans;
         this.picking = picking;
+        this.shipments = shipments;
     }
 
     @Transactional
@@ -37,5 +41,17 @@ public class OrderWarehouseService {
         }
         return picking.dispatch(tenantId, orderId, warehouseId, operatorId, order.lines().stream()
                 .map(l -> new SalesOrderPicking.Line(l.lineId(), l.sellerSku(), l.quantity())).toList());
+    }
+
+    @Transactional
+    public Optional<SalesOrder> readShipmentResult(String tenantId, String orderId) {
+        orders.lock(tenantId, orderId);
+        if (!picking.exists(tenantId, orderId)) return Optional.empty();
+        shipments.refresh(tenantId, orderId);
+        return orders.find(tenantId, orderId);
+    }
+
+    public boolean hasWarehouseWork(String tenantId, String orderId) {
+        return picking.exists(tenantId, orderId);
     }
 }
