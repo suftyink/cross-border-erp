@@ -172,7 +172,7 @@ public class WarehouseOperationService {
 
     @Transactional
     public OutboundOrder createOutboundOrder(String tenantId, CreateOutboundOrderCommand command) {
-        if ("SALES_BATCH_PICK".equals(command.referenceType())) {
+        if ("SALES_BATCH_PICK".equals(command.referenceType()) || "FBA_BATCH_PICK".equals(command.referenceType())) {
             throw new BizException("SALES_BATCH_PICK_REQUIRED", "销售批次作业须由销售订单下发");
         }
         ensureWarehouse(tenantId, command.warehouseId());
@@ -257,7 +257,7 @@ public class WarehouseOperationService {
     }
 
     private void ensureLegacyOutbound(OutboundOrder order) {
-        if ("SALES_BATCH_PICK".equals(order.referenceType())) {
+        if ("SALES_BATCH_PICK".equals(order.referenceType()) || "FBA_BATCH_PICK".equals(order.referenceType())) {
             throw new BizException("SALES_BATCH_PICK_REQUIRED", "销售批次作业须按实际库位和批次登记");
         }
     }

@@ -14,12 +14,15 @@ import com.aidotnet.erp.fba.domain.RestockCartItem;
 import com.aidotnet.erp.fba.domain.RestockSuggestion;
 import com.aidotnet.erp.fba.domain.ShipmentException;
 import com.aidotnet.erp.fba.infrastructure.FbaShipmentRepository;
+import com.aidotnet.erp.fba.infrastructure.mapper.FbaWarehouseMapper;
+import com.aidotnet.erp.common.wms.FbaWarehousePicking;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * FBA发货管理应用服务
@@ -55,9 +58,13 @@ import org.springframework.stereotype.Service;
 public class FbaShipmentService {
 
     private final FbaShipmentRepository repository;
+    private final FbaWarehouseMapper warehouseMapper;
+    private final FbaWarehousePicking warehousePicking;
 
-    public FbaShipmentService(FbaShipmentRepository repository) {
+    public FbaShipmentService(FbaShipmentRepository repository, FbaWarehouseMapper warehouseMapper, FbaWarehousePicking warehousePicking) {
         this.repository = repository;
+        this.warehouseMapper = warehouseMapper;
+        this.warehousePicking = warehousePicking;
     }
 
     public FbaInboundPlan createInboundPlan(String tenantId, CreateInboundPlanCommand command) {
@@ -240,7 +247,9 @@ public class FbaShipmentService {
                 FbaShipmentStatus.SUBMITTED, shipment.packedAt(), shipment.shippedAt()));
     }
 
+    @Transactional
     public FbaShipment pack(String tenantId, String fbaShipmentId, PackFbaShipmentCommand command) {
+        requireLegacyShipment(tenantId, fbaShipmentId);
         FbaShipment shipment = getShipment(tenantId, fbaShipmentId);
         if (shipment.status() != FbaShipmentStatus.DRAFT && shipment.status() != FbaShipmentStatus.SUBMITTED) {
             throw new BizException("FBA_SHIPMENT_STATUS_INVALID", "Only draft or submitted shipment can be packed");
@@ -258,7 +267,9 @@ public class FbaShipmentService {
                 shipment.shippedAt()));
     }
 
+    @Transactional
     public FbaShipment ship(String tenantId, String fbaShipmentId, ShipFbaShipmentCommand command) {
+        requireLegacyShipment(tenantId, fbaShipmentId);
         FbaShipment shipment = getShipment(tenantId, fbaShipmentId);
         if (shipment.status() != FbaShipmentStatus.PACKED && shipment.status() != FbaShipmentStatus.SUBMITTED) {
             throw new BizException("FBA_SHIPMENT_STATUS_INVALID", "Only packed or submitted shipment can be shipped");
@@ -276,7 +287,9 @@ public class FbaShipmentService {
                 Instant.now()));
     }
 
+    @Transactional
     public FbaShipment receive(String tenantId, String fbaShipmentId, ReceiveFbaShipmentCommand command) {
+        requireLegacyShipment(tenantId, fbaShipmentId);
         FbaShipment shipment = getShipment(tenantId, fbaShipmentId);
         if (shipment.status() != FbaShipmentStatus.SUBMITTED
                 && shipment.status() != FbaShipmentStatus.SHIPPED
@@ -419,6 +432,13 @@ public class FbaShipmentService {
 
     public List<ReplenishmentPlan> listPlans(String tenantId) {
         return repository.listPlans(tenantId);
+    }
+
+    private void requireLegacyShipment(String tenant, String id) {
+        if (warehouseMapper.lockShipment(tenant, id) == null) throw new BizException("FBA_SHIPMENT_NOT_FOUND", "FBA 备货单不存在");
+        if (warehousePicking.findFbaWork(tenant, id) != null) {
+            throw new BizException("FBA_WAREHOUSE_WORK_EXISTS", "该备货单已交由 WMS 作业，须按实拣与内部箱明细处理，不能从旧入口修改状态");
+        }
     }
 
     private FbaShipment getShipment(String tenantId, String fbaShipmentId) {

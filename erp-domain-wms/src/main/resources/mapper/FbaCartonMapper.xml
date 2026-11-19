@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.FbaCartonMapper">
+    <sql id="cartonSelect">
+        SELECT c.carton_id, c.request_id, c.carton_code, c.requested_code, c.outbound_id,
+               o.reference_id AS fba_shipment_id, p.status, c.operator_id, c.created_at
+        FROM wms_fba_carton c
+        JOIN wms_outbound_package p ON p.tenant_id = c.tenant_id AND p.package_id = c.carton_id
+        JOIN wms_outbound_order o ON o.tenant_id = c.tenant_id AND o.order_id = c.outbound_id
+    </sql>
+    <select id="findRequest" resultType="com.aidotnet.erp.wms.infrastructure.mapper.FbaCartonMapper$CartonRecord">
+        <include refid="cartonSelect"/> WHERE c.tenant_id = #{tenant} AND c.request_id = #{request}
+    </select>
+    <insert id="insert">
+        INSERT INTO wms_fba_carton(tenant_id, carton_id, request_id, carton_code, requested_code, outbound_id, operator_id, created_at)
+        VALUES (#{tenant}, #{c.cartonId}, #{c.requestId}, #{c.cartonCode}, #{c.requestedCode}, #{c.outboundId}, #{c.operatorId}, #{c.createdAt})
+        ON CONFLICT DO NOTHING
+    </insert>
+    <select id="list" resultType="com.aidotnet.erp.wms.infrastructure.mapper.FbaCartonMapper$CartonRecord">
+        <include refid="cartonSelect"/>
+        WHERE c.tenant_id = #{tenant}
+        <if test="filter.outboundId != null">AND c.outbound_id = #{filter.outboundId}</if>
+        <if test="filter.cartonCode != null">AND c.carton_code = #{filter.cartonCode}</if>
+        <if test="filter.batchNo != null or filter.purchaseOrderId != null">
+            AND EXISTS (SELECT 1 FROM wms_sales_package_pick pp
+                JOIN wms_actual_pick k ON k.tenant_id = pp.tenant_id AND k.request_id = pp.pick_id
+                JOIN wms_outbound_allocation a ON a.tenant_id = k.tenant_id AND a.allocation_id = k.allocation_id
+                JOIN wms_inbound_order_line l ON l.tenant_id = a.tenant_id AND l.batch_no = a.batch_no
+                JOIN wms_inbound_order r ON r.tenant_id = l.tenant_id AND r.order_id = l.order_id
+                WHERE pp.tenant_id = c.tenant_id AND pp.package_id = c.carton_id
+                <if test="filter.batchNo != null">AND a.batch_no = #{filter.batchNo}</if>
+                <if test="filter.purchaseOrderId != null">AND r.reference_id = #{filter.purchaseOrderId}</if>)
+        </if>
+        ORDER BY c.created_at, c.carton_id
+    </select>
+</mapper>

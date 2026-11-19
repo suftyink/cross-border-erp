@@ -6,6 +6,7 @@ import { PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import { usePageApi } from '@/lib/hooks';
 import { fbaApi } from '@/lib/api';
 import type { ShipmentPlan, FbaShipment, FbaInventory, FbaRemoval, PageParams } from '@/types';
+import { FbaWarehouse } from './fba-warehouse';
 
 const { Title } = Typography;
 
@@ -30,12 +31,13 @@ const shipmentStatusMap: Record<string, { color: string; text: string }> = {
 };
 
 export default function ShipmentsPage() {
+  const [activeTab, setActiveTab] = useState('warehouse');
   const [planParams, setPlanParams] = useState<PageParams & Record<string, unknown>>({ page: 1, size: 20 });
   const [shipmentParams, setShipmentParams] = useState<PageParams & Record<string, unknown>>({ page: 1, size: 20 });
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
-  const { data: plans, mutate: mutatePlans } = usePageApi<ShipmentPlan>('/fba/api/in/v1/shipments', planParams);
-  const { data: shipments } = usePageApi<FbaShipment>('/fba/api/in/v1/fba-shipments', shipmentParams);
+  const { data: plans, mutate: mutatePlans } = usePageApi<ShipmentPlan>(activeTab === 'plans' ? '/fba/api/in/v1/shipments' : null, planParams);
+  const { data: shipments } = usePageApi<FbaShipment>(activeTab === 'shipments' ? '/fba/api/in/v1/fba-shipments' : null, shipmentParams);
 
   const handleCreate = async () => {
     try {
@@ -82,7 +84,8 @@ export default function ShipmentsPage() {
   return (
     <div>
       <Card>
-        <Tabs items={[
+        <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
+          { key: 'warehouse', label: '备货与仓储作业', children: <FbaWarehouse /> },
           {
             key: 'plans',
             label: '备货计划',

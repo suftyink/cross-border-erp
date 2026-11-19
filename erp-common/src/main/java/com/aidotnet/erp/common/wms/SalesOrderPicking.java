@@ -11,7 +11,7 @@ public interface SalesOrderPicking {
 
     record Line(String lineId, String sellerSku, int quantity) {}
     record Work(String outboundId, String salesOrderId, String warehouseId, String status, int requiredQuantity, boolean allowBatchSubstitution,
-                List<Allocation> allocations, List<ActualPick> picks) {}
+                List<Allocation> allocations, List<ActualPick> picks, String sourceType, String sourceId) {}
     record Allocation(String allocationId, String outboundId, String lineId, String salesLineId, String sellerSku,
                       String locationId, String locationCode, String batchNo, String receiptId, String purchaseOrderId,
                       int plannedQuantity, int pickedQuantity, int shortQuantity, int cancelledQuantity) {

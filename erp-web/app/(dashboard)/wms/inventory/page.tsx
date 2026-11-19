@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { useApi } from '@/lib/hooks';
 import type { InventoryBalance, Warehouse, WarehouseLocation } from '@/types';
 import { SalesBatchTrace } from './sales-batch-trace';
+import { CartonTrace } from '../operations/fba-cartons';
 
 const wms = '/wms/api/in/v1';
 const stockLabels: Record<string, string> = {
@@ -79,10 +80,10 @@ function InventoryLedger() {
   const [sellerSku, setSku] = useState(search.get('sellerSku') ?? search.get('sku') ?? search.get('keyword') ?? '');
   const [batchNo, setBatch] = useState(search.get('batchNo') ?? '');
   const [documentId, setDocument] = useState(search.get('documentId') ?? '');
-  const [tab, setTab] = useState(search.get('tab') === 'shipments' ? 'shipments' : search.get('tab') === 'movements' ? 'movements'
+  const [tab, setTab] = useState(search.get('tab') === 'cartons' ? 'cartons' : search.get('tab') === 'shipments' ? 'shipments' : search.get('tab') === 'movements' ? 'movements'
     : search.has('batchNo') || purchaseOrderId ? 'batch' : 'warehouse');
   useEffect(() => {
-    setTab(search.get('tab') === 'shipments' ? 'shipments' : search.get('tab') === 'movements' ? 'movements'
+    setTab(search.get('tab') === 'cartons' ? 'cartons' : search.get('tab') === 'shipments' ? 'shipments' : search.get('tab') === 'movements' ? 'movements'
       : search.has('batchNo') || search.has('purchaseOrderId') ? 'batch' : 'warehouse');
     setBatch(search.get('batchNo') ?? '');
     setWarehouse(search.get('warehouseId') ?? undefined);
@@ -139,6 +140,8 @@ function InventoryLedger() {
       {(warehouses.error || locations.error || summary.error || balances.error || transactions.error)
         && <Alert showIcon type="error" message="库存数据加载失败，请刷新重试" />}
       <Tabs activeKey={tab} onChange={setTab} items={[
+        { key: 'cartons', label: 'FBA 箱内追溯', children: tab === 'cartons'
+          ? <CartonTrace batchNo={batchNo || undefined} purchaseOrderId={purchaseOrderId ?? undefined} /> : null },
         { key: 'shipments', label: '出库追溯', children: tab === 'shipments'
           ? <SalesBatchTrace purchaseOrderId={purchaseOrderId} batchNo={batchNo} packageId={packageId}
             warehouseId={warehouseId} locationId={locationId} sellerSku={sellerSku} /> : null },

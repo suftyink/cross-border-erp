@@ -2,6 +2,7 @@ package com.aidotnet.erp.wms.application;
 
 import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.common.wms.SalesOrderPicking;
+import com.aidotnet.erp.common.wms.FbaWarehousePicking;
 import com.aidotnet.erp.wms.domain.BatchStock;
 import com.aidotnet.erp.wms.domain.InventoryBalance;
 import com.aidotnet.erp.wms.domain.InventoryTransaction;
@@ -23,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Isolation;
 
 @Service
-public class SalesPickingService implements SalesOrderPicking {
+public class SalesPickingService implements SalesOrderPicking, FbaWarehousePicking {
     private final SalesPickingMapper picks;
     private final InventoryStore inventory;
     private final BatchQualityGuard quality;
@@ -45,7 +46,26 @@ public class SalesPickingService implements SalesOrderPicking {
     @Transactional
     public Work dispatch(String tenantId, String salesOrderId, String warehouseId, String operatorId, List<Line> lines,
                          boolean allowBatchSubstitution) {
-        String existing = picks.findBySalesOrder(tenantId, salesOrderId);
+        return dispatchWork(tenantId, salesOrderId, warehouseId, operatorId, lines, allowBatchSubstitution, "SALES_ORDER");
+    }
+
+    @Override
+    @Transactional
+    public Work dispatchFba(String tenant, String shipment, String warehouse, String operator, List<Line> lines) {
+        return dispatchWork(tenant, shipment, warehouse, operator, lines, false, "FBA_SHIPMENT");
+    }
+
+    @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Work findFbaWork(String tenant, String shipment) {
+        String outbound = picks.findBySource(tenant, "FBA_SHIPMENT", shipment);
+        return outbound == null ? null : get(tenant, outbound);
+    }
+
+    private Work dispatchWork(String tenantId, String salesOrderId, String warehouseId, String operatorId, List<Line> lines,
+                              boolean allowBatchSubstitution, String sourceType) {
+        String referenceType = sourceType.equals("FBA_SHIPMENT") ? "FBA_BATCH_PICK" : "SALES_BATCH_PICK";
+        String existing = picks.findBySource(tenantId, sourceType, salesOrderId);
         if (existing != null) {
             Work work = get(tenantId, existing);
             if (!warehouseId.equals(work.warehouseId()) || work.allowBatchSubstitution() != allowBatchSubstitution) {
@@ -64,9 +84,9 @@ public class SalesPickingService implements SalesOrderPicking {
         }
         String outboundId = UUID.randomUUID().toString();
         Instant now = Instant.now();
-        orders.saveOutboundOrder(new OutboundOrder(outboundId, tenantId, warehouseId, "SALES_BATCH_PICK",
-                salesOrderId, OutboundOrderStatus.PENDING, "销售订单批次拣货", now, now));
-        picks.insertWork(tenantId, outboundId, salesOrderId, operatorId, allowBatchSubstitution);
+        orders.saveOutboundOrder(new OutboundOrder(outboundId, tenantId, warehouseId, referenceType,
+                salesOrderId, OutboundOrderStatus.PENDING, "订单批次拣货", now, now));
+        picks.insertWork(tenantId, outboundId, salesOrderId, operatorId, allowBatchSubstitution, sourceType);
         for (Line line : lines.stream().sorted(Comparator.comparing(Line::sellerSku).thenComparing(Line::lineId)).toList()) {
             String lineId = UUID.randomUUID().toString();
             orders.saveOutboundOrderLine(new OutboundOrderLine(lineId, outboundId, line.sellerSku(), null,
@@ -105,7 +125,7 @@ public class SalesPickingService implements SalesOrderPicking {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Work get(String tenantId, String outboundId) {
         OutboundOrder order = orders.findOutboundOrder(tenantId, outboundId)
-                .filter(o -> "SALES_BATCH_PICK".equals(o.referenceType()))
+                .filter(o -> "SALES_BATCH_PICK".equals(o.referenceType()) || "FBA_BATCH_PICK".equals(o.referenceType()))
                 .orElseThrow(() -> new BizException("SALES_PICK_NOT_FOUND", "销售拣货作业不存在"));
         List<Allocation> allocations = picks.allocations(tenantId, outboundId);
         var orderLines = orders.listOutboundOrderLines(outboundId);
@@ -119,9 +139,10 @@ public class SalesPickingService implements SalesOrderPicking {
         else if (!status.equals("NEEDS_ALLOCATION") && orders.listOutboundPackages(tenantId, outboundId).stream()
                 .anyMatch(p -> p.status() == com.aidotnet.erp.wms.domain.OutboundPackageStatus.SHIPPED)) status = "PARTIALLY_SHIPPED";
         if (quality.heldOutbound(tenantId, outboundId)) status = "QUALITY_HOLD";
-        return new Work(outboundId, order.referenceId(), order.warehouseId(), status,
+        boolean fba = "FBA_BATCH_PICK".equals(order.referenceType());
+        return new Work(outboundId, fba ? null : order.referenceId(), order.warehouseId(), status,
                 required, picks.allowBatchSubstitution(tenantId, outboundId),
-                allocations, picks.picks(tenantId, outboundId));
+                allocations, picks.picks(tenantId, outboundId), fba ? "FBA_SHIPMENT" : "SALES_ORDER", order.referenceId());
     }
 
     @Transactional
@@ -215,7 +236,8 @@ public class SalesPickingService implements SalesOrderPicking {
             InventoryTransaction.TransactionType type, int quantity, InventoryBalance before, int afterReserved,
             String outboundId, String remark, Integer beforeLocation, Integer afterLocation, int availableDelta) {
         return new InventoryTransaction(UUID.randomUUID().toString(), tenant, warehouse, a.sellerSku(), type,
-                quantity, before.onHand(), before.reserved(), before.onHand(), afterReserved, "SALES_BATCH_PICK",
+                quantity, before.onHand(), before.reserved(), before.onHand(), afterReserved,
+                orders.findOutboundOrder(tenant, outboundId).orElseThrow().referenceType(),
                 outboundId, remark, Instant.now(), a.batchNo(), operator, 0, 0, 0,
                 a.locationId(), null, beforeLocation, afterLocation, null, null, availableDelta);
     }

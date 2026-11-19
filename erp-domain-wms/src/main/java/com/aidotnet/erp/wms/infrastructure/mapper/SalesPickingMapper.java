@@ -13,11 +13,12 @@ import org.apache.ibatis.annotations.Param;
 @InterceptorIgnore(tenantLine = "true")
 public interface SalesPickingMapper {
     String findBySalesOrder(@Param("tenantId") String tenantId, @Param("salesOrderId") String salesOrderId);
+    String findBySource(@Param("tenantId") String tenantId, @Param("sourceType") String sourceType, @Param("sourceId") String sourceId);
     List<String> list(@Param("tenantId") String tenantId, @Param("salesOrderId") String salesOrderId);
     String lockWork(@Param("tenantId") String tenantId, @Param("outboundId") String outboundId);
     void insertWork(@Param("tenantId") String tenantId, @Param("outboundId") String outboundId,
                     @Param("salesOrderId") String salesOrderId, @Param("operatorId") String operatorId,
-                    @Param("allowBatchSubstitution") boolean allowBatchSubstitution);
+                    @Param("allowBatchSubstitution") boolean allowBatchSubstitution, @Param("sourceType") String sourceType);
     boolean allowBatchSubstitution(@Param("tenantId") String tenantId, @Param("outboundId") String outboundId);
     List<BatchStock> candidates(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
                                 @Param("sellerSku") String sellerSku);

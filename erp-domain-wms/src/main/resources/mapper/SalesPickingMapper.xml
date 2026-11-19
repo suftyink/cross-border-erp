@@ -2,11 +2,14 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.SalesPickingMapper">
     <select id="findBySalesOrder" resultType="string">
-        SELECT outbound_id FROM wms_sales_pick_work WHERE tenant_id = #{tenantId} AND sales_order_id = #{salesOrderId}
+        SELECT outbound_id FROM wms_sales_pick_work WHERE tenant_id = #{tenantId} AND sales_order_id = #{salesOrderId} AND source_type = 'SALES_ORDER'
+    </select>
+    <select id="findBySource" resultType="string">
+        SELECT outbound_id FROM wms_sales_pick_work WHERE tenant_id = #{tenantId} AND sales_order_id = #{sourceId} AND source_type = #{sourceType}
     </select>
     <select id="list" resultType="string">
         SELECT outbound_id FROM wms_sales_pick_work WHERE tenant_id = #{tenantId}
-        <if test="salesOrderId != null">AND sales_order_id = #{salesOrderId}</if>
+        <if test="salesOrderId != null">AND sales_order_id = #{salesOrderId} AND source_type = 'SALES_ORDER'</if>
         ORDER BY created_at DESC, outbound_id
     </select>
     <select id="lockWork" resultType="string">
@@ -14,8 +17,8 @@
         WHERE tenant_id = #{tenantId} AND outbound_id = #{outboundId} FOR UPDATE
     </select>
     <insert id="insertWork">
-        INSERT INTO wms_sales_pick_work(tenant_id, outbound_id, sales_order_id, operator_id, allow_batch_substitution)
-        VALUES (#{tenantId}, #{outboundId}, #{salesOrderId}, #{operatorId}, #{allowBatchSubstitution})
+        INSERT INTO wms_sales_pick_work(tenant_id, outbound_id, sales_order_id, operator_id, allow_batch_substitution, source_type)
+        VALUES (#{tenantId}, #{outboundId}, #{salesOrderId}, #{operatorId}, #{allowBatchSubstitution}, #{sourceType})
     </insert>
     <select id="allowBatchSubstitution" resultType="boolean">
         SELECT allow_batch_substitution FROM wms_sales_pick_work WHERE tenant_id = #{tenantId} AND outbound_id = #{outboundId}

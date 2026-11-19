@@ -17,6 +17,7 @@ const allPermissions = [
   'wms:receipt:write', 'wms:inspection:write', 'scm:supplier:tolerance:write', 'scm:purchase:amend',
   'wms:putaway:write', 'wms:location:write',
   'oms:warehouse:write', 'wms:pick:write',
+  'fba:warehouse:write', 'wms:carton:write',
   'wms:ship:write',
   'crm:recall:close', 'crm:recall:write', 'crm:return:write', 'wms:return:write',
   'wms:quality-correction:write', 'wms:quality-correction:approve',
@@ -25,6 +26,8 @@ const allPermissions = [
 ];
 
 const permissionLabels: Record<string, string> = {
+  'fba:warehouse:write': 'FBA · 下发本地仓储备货',
+  'wms:carton:write': '仓储 · FBA 按内部箱号装箱',
   'crm:recall:close': '售后 · 召回明细异常结案',
   'crm:recall:write': '售后 · 批次召回与通知登记',
   'crm:return:write': '售后 · 销售退货建单与批次核实',
