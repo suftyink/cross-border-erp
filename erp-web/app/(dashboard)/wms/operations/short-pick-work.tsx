@@ -68,7 +68,7 @@ export function ShortPickWork({ source, outboundId, reviewId }: {
   const canView = work.data?.canReport || work.data?.canCount || work.data?.canApprove;
   return <Card title="缺拣换批与差异复核" extra={<Space>
     <Button onClick={() => void work.mutate()}>刷新复核</Button>
-    {source && work.data?.canReport && <Button disabled={!!pending || !source.allocations.some((a) => a.plannedQuantity - a.pickedQuantity - a.shortQuantity > 0)}
+    {source && work.data?.canReport && <Button disabled={!!pending || !source.allocations.some((a) => a.plannedQuantity - a.pickedQuantity - a.shortQuantity - a.cancelledQuantity > 0)}
       onClick={() => show({ kind: 'report', source })}>登记缺拣</Button>}
   </Space>}>
     <Space direction="vertical" style={{ width: '100%' }}>

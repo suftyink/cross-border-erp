@@ -30,5 +30,7 @@ public interface SalesPickingMapper {
     void pickAllocation(@Param("tenantId") String tenantId, @Param("allocationId") String allocationId,
                         @Param("quantity") int quantity);
     void insertPick(@Param("tenantId") String tenantId, @Param("p") ActualPick pick);
+    int qualityReallocationQuantity(@Param("tenantId") String tenantId, @Param("outboundId") String outboundId, @Param("lineId") String lineId);
+    void markQualityReplacement(@Param("tenantId") String tenantId, @Param("allocationId") String allocationId);
     int physicalQuantity(@Param("tenantId") String tenantId, @Param("a") Allocation allocation);
 }

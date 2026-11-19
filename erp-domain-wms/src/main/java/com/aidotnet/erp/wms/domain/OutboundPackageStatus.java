@@ -9,5 +9,7 @@ public enum OutboundPackageStatus {
     /** 已称重，待发货 */
     WEIGHED,
     /** 已发货 */
-    SHIPPED
+    SHIPPED,
+    /** 质检更正撤拣，保留包裹历史但不能发货 */
+    CANCELLED
 }

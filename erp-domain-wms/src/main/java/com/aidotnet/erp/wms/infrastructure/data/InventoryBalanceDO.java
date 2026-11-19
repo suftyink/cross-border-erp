@@ -18,6 +18,7 @@ public class InventoryBalanceDO {
     private int pendingPutaway;
     private int quarantined;
     private int pendingReview;
+    private int qualityHold;
 
     public InventoryBalanceDO() {
     }
@@ -44,6 +45,8 @@ public class InventoryBalanceDO {
     public void setPendingPutaway(int value) { pendingPutaway = value; }
     public int getQuarantined() { return quarantined; }
     public void setQuarantined(int value) { quarantined = value; }
+    public int getQualityHold() { return qualityHold; }
+    public void setQualityHold(int value) { qualityHold = value; }
     public int getPendingReview() { return pendingReview; }
     public void setPendingReview(int value) { pendingReview = value; }
 }

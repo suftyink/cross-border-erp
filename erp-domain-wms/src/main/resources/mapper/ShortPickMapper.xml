@@ -37,7 +37,7 @@
     <update id="markAllocationShort">
         UPDATE wms_outbound_allocation SET short_quantity = short_quantity + #{quantity}
         WHERE tenant_id = #{tenantId} AND allocation_id = #{allocationId}
-          AND planned_quantity - picked_quantity - short_quantity &gt;= #{quantity}
+          AND planned_quantity - picked_quantity - short_quantity - cancelled_quantity &gt;= #{quantity}
     </update>
     <update id="freezeReview">
         UPDATE wms_batch_location_balance

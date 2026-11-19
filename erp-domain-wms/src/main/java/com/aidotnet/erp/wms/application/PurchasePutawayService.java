@@ -25,12 +25,14 @@ public class PurchasePutawayService {
     private final PurchasePutawayMapper putaways;
     private final PurchaseInspectionMapper inspections;
     private final InventoryStore inventory;
+    private final BatchQualityGuard quality;
 
     public PurchasePutawayService(PurchasePutawayMapper putaways, PurchaseInspectionMapper inspections,
-                                  InventoryStore inventory) {
+                                  InventoryStore inventory, BatchQualityGuard quality) {
         this.putaways = putaways;
         this.inspections = inspections;
         this.inventory = inventory;
+        this.quality = quality;
     }
 
     public List<BatchStock> work(String tenantId, String purchaseOrderId) {
@@ -75,6 +77,7 @@ public class PurchasePutawayService {
         WarehouseLocation location = validLocation(tenantId, batch.warehouseId(), locationCode);
         InventoryBalance balance = inventory.lockBalanceWithPurchaseStates(tenantId, batch.warehouseId(), batch.sellerSku())
                 .orElseThrow(() -> new BizException("INVENTORY_NOT_FOUND", "库存不存在"));
+        quality.requireClear(tenantId, batchNo);
         if (balance.pendingPutaway() < command.quantity() || balance.legacyFrozenQuantity() < 0
                 || (long) balance.frozen() + balance.reserved() > balance.onHand()) {
             throw new BizException("PUTAWAY_INVENTORY_MISMATCH", "批次与冻结库存不一致，请核查库存");

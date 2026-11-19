@@ -5,7 +5,9 @@
         SELECT order_id FROM wms_outbound_package WHERE tenant_id = #{tenantId} AND package_id = #{packageId}
     </select>
     <select id="packedQuantity" resultType="int">
-        SELECT COALESCE(SUM(quantity), 0) FROM wms_sales_package_pick WHERE tenant_id = #{tenantId} AND pick_id = #{pickId}
+        SELECT COALESCE(SUM(pp.quantity), 0) FROM wms_sales_package_pick pp
+        JOIN wms_outbound_package p ON p.tenant_id = pp.tenant_id AND p.package_id = pp.package_id
+        WHERE pp.tenant_id = #{tenantId} AND pp.pick_id = #{pickId} AND p.status != 'CANCELLED'
     </select>
     <insert id="insertPick">
         INSERT INTO wms_sales_package_pick(tenant_id, package_id, pick_id, quantity)

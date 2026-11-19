@@ -14,7 +14,12 @@ public interface SalesOrderPicking {
                 List<Allocation> allocations, List<ActualPick> picks) {}
     record Allocation(String allocationId, String outboundId, String lineId, String salesLineId, String sellerSku,
                       String locationId, String locationCode, String batchNo, String receiptId, String purchaseOrderId,
-                      int plannedQuantity, int pickedQuantity, int shortQuantity) {
+                      int plannedQuantity, int pickedQuantity, int shortQuantity, int cancelledQuantity) {
+        public Allocation(String allocationId, String outboundId, String lineId, String salesLineId, String sellerSku,
+                          String locationId, String locationCode, String batchNo, String receiptId, String purchaseOrderId,
+                          int plannedQuantity, int pickedQuantity, int shortQuantity) {
+            this(allocationId, outboundId, lineId, salesLineId, sellerSku, locationId, locationCode, batchNo, receiptId, purchaseOrderId, plannedQuantity, pickedQuantity, shortQuantity, 0);
+        }
         public Allocation(String allocationId, String outboundId, String lineId, String salesLineId, String sellerSku,
                           String locationId, String locationCode, String batchNo, String receiptId, String purchaseOrderId,
                           int plannedQuantity, int pickedQuantity) {
@@ -24,5 +29,10 @@ public interface SalesOrderPicking {
     }
     record ActualPick(String requestId, String outboundId, String allocationId, String locationId, String locationCode,
                       String batchNo, String sellerSku, String receiptId, String purchaseOrderId, int quantity,
-                      String operatorId, Instant createdAt) {}
+                      String operatorId, Instant createdAt, int returnedQuantity) {
+        public ActualPick(String requestId, String outboundId, String allocationId, String locationId, String locationCode,
+                          String batchNo, String sellerSku, String receiptId, String purchaseOrderId, int quantity, String operatorId, Instant createdAt) {
+            this(requestId, outboundId, allocationId, locationId, locationCode, batchNo, sellerSku, receiptId, purchaseOrderId, quantity, operatorId, createdAt, 0);
+        }
+    }
 }

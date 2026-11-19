@@ -90,6 +90,12 @@ public record InventoryTransaction(
         SALES_SHIP,
         SHORT_PICK_REPORT,
         SHORT_PICK_REPLACE,
-        STOCK_REVIEW
+        STOCK_REVIEW,
+        QUALITY_HOLD,
+        QUALITY_RELEASE,
+        PUTAWAY_REVERSE,
+        SALES_UNPICK,
+        INSPECTION_WITHDRAW,
+        QUALITY_REINSPECT
     }
 }

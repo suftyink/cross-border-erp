@@ -106,7 +106,7 @@ public class InventoryStore {
         long located = locatedQuantity(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
         long batchReserved = inventoryMapper.selectBatchReserved(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
         long batchReview = inventoryMapper.selectBatchReview(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
-        if (balance.getAvailable() < located || balance.reserved() < batchReserved || balance.frozen() < batchReview) {
+        if (balance.getAvailable() < located || balance.reserved() < batchReserved || balance.frozen() < batchReview + inventoryMapper.selectQualityHold(balance.tenantId(), balance.warehouseId(), balance.sellerSku())) {
             throw new BizException("BATCH_STOCK_OPERATION_REQUIRED", "已按库位管理的库存需要按实物批次办理");
         }
         inventoryMapper.ensureBalance(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
@@ -529,7 +529,7 @@ public class InventoryStore {
                 d.getReserved() != null ? d.getReserved() : 0,
                 d.getInTransit() != null ? d.getInTransit() : 0,
                 d.getFrozen() != null ? d.getFrozen() : 0,
-                d.getUpdatedAt(), d.getPendingInspection(), d.getPendingPutaway(), d.getQuarantined(), d.getPendingReview());
+                d.getUpdatedAt(), d.getPendingInspection(), d.getPendingPutaway(), d.getQuarantined(), d.getPendingReview(), d.getQualityHold());
     }
 
     private WarehouseLocationDO toLocationData(WarehouseLocation l) {

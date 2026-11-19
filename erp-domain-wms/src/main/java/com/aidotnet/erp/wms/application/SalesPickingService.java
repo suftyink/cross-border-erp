@@ -26,11 +26,13 @@ import org.springframework.transaction.annotation.Isolation;
 public class SalesPickingService implements SalesOrderPicking {
     private final SalesPickingMapper picks;
     private final InventoryStore inventory;
+    private final BatchQualityGuard quality;
     private final WmsOrderStore orders;
 
-    public SalesPickingService(SalesPickingMapper picks, InventoryStore inventory, WmsOrderStore orders) {
+    public SalesPickingService(SalesPickingMapper picks, InventoryStore inventory, WmsOrderStore orders, BatchQualityGuard quality) {
         this.picks = picks;
         this.inventory = inventory;
+        this.quality = quality;
         this.orders = orders;
     }
 
@@ -111,10 +113,12 @@ public class SalesPickingService implements SalesOrderPicking {
         boolean pickedAll = orderLines.stream().allMatch(l -> l.pickedQuantity() == l.requiredQuantity());
         String status = pickedAll ? "PICKED"
                 : allocations.stream().anyMatch(a -> a.pickedQuantity() > 0) ? "PICKING" : "RESERVED";
-        if (allocations.stream().mapToInt(a -> a.plannedQuantity() - a.shortQuantity()).sum() < required) status = "SHORT_PICK";
+        if (allocations.stream().mapToInt(a -> a.plannedQuantity() - a.shortQuantity() - a.cancelledQuantity()).sum() < required) status = "SHORT_PICK";
+        if (status.equals("SHORT_PICK") && allocations.stream().anyMatch(a -> a.cancelledQuantity() > 0)) status = "NEEDS_ALLOCATION";
         if (order.status() == OutboundOrderStatus.SHIPPED) status = "SHIPPED";
-        else if (orders.listOutboundPackages(tenantId, outboundId).stream()
+        else if (!status.equals("NEEDS_ALLOCATION") && orders.listOutboundPackages(tenantId, outboundId).stream()
                 .anyMatch(p -> p.status() == com.aidotnet.erp.wms.domain.OutboundPackageStatus.SHIPPED)) status = "PARTIALLY_SHIPPED";
+        if (quality.heldOutbound(tenantId, outboundId)) status = "QUALITY_HOLD";
         return new Work(outboundId, order.referenceId(), order.warehouseId(), status,
                 required, picks.allowBatchSubstitution(tenantId, outboundId),
                 allocations, picks.picks(tenantId, outboundId));
@@ -144,10 +148,11 @@ public class SalesPickingService implements SalesOrderPicking {
                 || !locations.get(0).locationId().equals(a.locationId()) || !command.batchNo().equals(a.batchNo())) {
             throw new BizException("SALES_PICK_SCAN_INVALID", "库位或批次不符，请扫描计划明细对应的良品实物标签");
         }
-        if (command.quantity() <= 0 || command.quantity() > a.plannedQuantity() - a.pickedQuantity() - a.shortQuantity()) {
+        if (command.quantity() <= 0 || command.quantity() > a.plannedQuantity() - a.pickedQuantity() - a.shortQuantity() - a.cancelledQuantity()) {
             throw new BizException("SALES_PICK_QUANTITY_INVALID", "实拣数量必须大于零且不能超过当前明细待拣数量");
         }
         InventoryBalance balance = inventory.lockBalance(tenantId, work.warehouseId(), a.sellerSku()).orElseThrow();
+        quality.requireClear(tenantId, a.batchNo());
         int beforeLocation = picks.physicalQuantity(tenantId, a);
         if (picks.pick(tenantId, a, command.quantity()) != 1) {
             throw new BizException("SALES_PICK_STOCK_INVALID", "批次预占库存不足，请核查库存");
@@ -168,6 +173,42 @@ public class SalesPickingService implements SalesOrderPicking {
                 outboundId, "实拣转发货暂存区，操作编号 " + command.requestId(), beforeLocation,
                 beforeLocation - command.quantity(), 0));
         return actual;
+    }
+
+    @Transactional
+    public Work reallocate(String tenant, String outbound, String operator) {
+        if (picks.lockWork(tenant, outbound) == null) throw new BizException("SALES_PICK_NOT_FOUND", "销售拣货作业不存在");
+        Work work = get(tenant, outbound);
+        Map<String, InventoryBalance> balances = new LinkedHashMap<>();
+        var lines = orders.listOutboundOrderLines(outbound).stream()
+                .sorted(Comparator.comparing(OutboundOrderLine::sellerSku).thenComparing(OutboundOrderLine::lineId)).toList();
+        for (var line : lines) {
+            int remaining = picks.qualityReallocationQuantity(tenant, outbound, line.lineId());
+            if (remaining <= 0) continue;
+            InventoryBalance before = balances.computeIfAbsent(line.sellerSku(), sku -> inventory.lockBalance(tenant, work.warehouseId(), sku)
+                    .orElseThrow(() -> insufficient(sku)));
+            var original = work.allocations().stream().filter(a -> a.lineId().equals(line.lineId())).findFirst().orElseThrow();
+            if (before.getAvailable() < remaining) throw insufficient(line.sellerSku());
+            for (BatchStock stock : picks.candidates(tenant, work.warehouseId(), line.sellerSku())) {
+                int quantity = Math.min(remaining, stock.quantity());
+                if (picks.reserve(tenant, stock, quantity) != 1) throw insufficient(line.sellerSku());
+                Allocation a = new Allocation(UUID.randomUUID().toString(), outbound, line.lineId(), original.salesLineId(), line.sellerSku(),
+                        stock.locationId(), stock.locationCode(), stock.batchNo(), stock.receiptId(), stock.purchaseOrderId(), quantity, 0);
+                picks.insertAllocation(tenant, a);
+                picks.markQualityReplacement(tenant, a.allocationId());
+                InventoryBalance after = new InventoryBalance(tenant, work.warehouseId(), line.sellerSku(), before.onHand(),
+                        before.reserved() + quantity, before.inTransit(), before.frozen(), Instant.now());
+                inventory.saveBalance(after);
+                inventory.saveTransaction(transaction(tenant, work.warehouseId(), a, operator, InventoryTransaction.TransactionType.RESERVE,
+                        quantity, before, after.reserved(), outbound, "质检更正后重新分配合格批次", null, null, -quantity));
+                before = after;
+                remaining -= quantity;
+                if (remaining == 0) break;
+            }
+            if (remaining > 0) throw insufficient(line.sellerSku());
+            balances.put(line.sellerSku(), before);
+        }
+        return get(tenant, outbound);
     }
 
     private InventoryTransaction transaction(String tenant, String warehouse, Allocation a, String operator,

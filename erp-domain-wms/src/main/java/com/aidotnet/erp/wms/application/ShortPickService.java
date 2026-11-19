@@ -26,11 +26,13 @@ public class ShortPickService {
     private final ShortPickMapper reviews;
     private final SalesPickingMapper picks;
     private final InventoryStore inventory;
+    private final BatchQualityGuard quality;
     private final WmsOrderStore orders;
-    public ShortPickService(ShortPickMapper reviews, SalesPickingMapper picks, InventoryStore inventory, WmsOrderStore orders) {
+    public ShortPickService(ShortPickMapper reviews, SalesPickingMapper picks, InventoryStore inventory, WmsOrderStore orders, BatchQualityGuard quality) {
         this.reviews = reviews;
         this.picks = picks;
         this.inventory = inventory;
+        this.quality = quality;
         this.orders = orders;
     }
 
@@ -57,12 +59,13 @@ public class ShortPickService {
         Allocation a = picks.allocations(tenant, outbound).stream().filter(v -> v.allocationId().equals(command.allocationId()))
                 .findFirst().orElseThrow(() -> new BizException("SHORT_PICK_ALLOCATION_INVALID", "原分配明细不属于当前作业"));
         int quantity = command.quantity();
-        if (quantity <= 0 || quantity > a.plannedQuantity() - a.pickedQuantity() - a.shortQuantity()) {
+        if (quantity <= 0 || quantity > a.plannedQuantity() - a.pickedQuantity() - a.shortQuantity() - a.cancelledQuantity()) {
             throw new BizException("SHORT_PICK_QUANTITY_INVALID", "缺拣数量不能超过原明细尚未实拣的数量");
         }
         String warehouse = orders.findOutboundOrder(tenant, outbound).orElseThrow().warehouseId();
         lockLocation(tenant, warehouse, a.locationCode(), a.locationId(), false);
         InventoryBalance before = balance(tenant, warehouse, a.sellerSku());
+        quality.requireClear(tenant, a.batchNo());
         Instant now = Instant.now();
         try { reviews.insert(tenant, outbound, command.shortPickId(), a.allocationId(), quantity, reason, operator, now); }
         catch (DuplicateKeyException duplicate) { throw conflict(); }
@@ -149,13 +152,14 @@ public class ShortPickService {
         InventoryBalance before = balance(tenant, c.warehouseId(), c.sellerSku());
         int physical = reviews.physical(tenant, c.batchNo(), c.locationId());
         if (before.frozen() < c.shortQuantity() || before.onHand() < missing || reviews.resolveStock(tenant, c) != 1) throw stockMismatch();
+        boolean qualityHeld = quality.retainFoundStock(tenant, c.batchNo(), missing);
         InventoryBalance after = new InventoryBalance(tenant, c.warehouseId(), c.sellerSku(), before.onHand() - missing,
-                before.reserved(), before.inTransit(), before.frozen() - c.shortQuantity(), Instant.now());
+                before.reserved(), before.inTransit(), before.frozen() - c.shortQuantity() + (qualityHeld ? found : 0), Instant.now());
         inventory.saveBalance(after);
         reviews.confirm(tenant, id, operator, Instant.now());
         movement(tenant, c.warehouseId(), c.sellerSku(), c.batchNo(), c.locationId(), id, operator,
                 InventoryTransaction.TransactionType.STOCK_REVIEW, c.shortQuantity(), before, after, physical, physical - missing,
-                found, -c.shortQuantity(), "主管确认复盘：找回 " + found + "，短少 " + missing);
+                qualityHeld ? 0 : found, -c.shortQuantity(), "主管确认复盘：找回 " + found + "，短少 " + missing + (qualityHeld ? "；找回实物继续质量冻结" : ""));
         return get(tenant, id);
     }
 

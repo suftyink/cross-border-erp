@@ -229,6 +229,7 @@ export interface InventoryBalance {
   pendingPutaway: number;
   quarantined: number;
   pendingReview: number;
+  qualityHold: number;
 }
 
 export interface WarehouseLocation {

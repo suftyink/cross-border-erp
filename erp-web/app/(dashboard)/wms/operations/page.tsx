@@ -15,6 +15,7 @@ import { PurchasePutaway } from './purchase-putaway';
 import { PurchaseReturns, ReceiptReturnAction } from './purchase-returns';
 import { newOperationId } from './operation-id';
 import { SalesPicking } from './sales-picking';
+import { QualityCorrections } from './quality-corrections';
 import { ShortPickWork } from './short-pick-work';
 
 const receiptsApi = '/wms/api/in/v1/purchase-receipts';
@@ -32,10 +33,12 @@ function ReceiptWork() {
   const salesOrderId = search.get('salesOrderId');
   const outboundId = search.get('outboundId');
   const reviewId = search.get('reviewId');
-  const [activeTab, setActiveTab] = useState(reviewId ? 'reviews' : salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
+  const correctionId = search.get('correctionId');
+  const requestedTab = search.get('tab');
+  const [activeTab, setActiveTab] = useState(correctionId || requestedTab === 'quality' ? 'quality' : requestedTab === 'putaway' ? 'putaway' : reviewId ? 'reviews' : salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
   useEffect(() => {
-    setActiveTab(reviewId ? 'reviews' : salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
-  }, [salesOrderId, outboundId, returnId, purchaseOrderId, sourceBatchNo, reviewId]);
+    setActiveTab(correctionId || requestedTab === 'quality' ? 'quality' : requestedTab === 'putaway' ? 'putaway' : reviewId ? 'reviews' : salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
+  }, [salesOrderId, outboundId, returnId, purchaseOrderId, sourceBatchNo, reviewId, correctionId, requestedTab]);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder>();
   const [replacement, setReplacement] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<PurchaseReceipt>();
@@ -139,7 +142,7 @@ function ReceiptWork() {
             ]} />
           </Card>
         </Space>
-      ) }, { key: 'inspection', label: '质检', children: (
+      ) }, { key: 'quality', label: '质检更正', children: <QualityCorrections correctionId={correctionId} batchNo={sourceBatchNo} /> }, { key: 'inspection', label: '质检', children: (
         <InspectionWork purchaseOrderId={purchaseOrderId} warehouses={warehouses ?? []} />
       ) }, { key: 'putaway', label: '上架', children: (
         <PurchasePutaway purchaseOrderId={purchaseOrderId} warehouses={warehouses ?? []} />

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { Alert, Button, Card, Descriptions, Form, InputNumber, Modal, Radio, Space, Spin, Table, Tag } from 'antd';
 import { isAxiosError } from 'axios';
@@ -43,6 +44,7 @@ interface Detail {
   quarantined: number;
   dispositionOperatorId?: string;
   disposedAt?: string;
+  qualityCorrections: { correctionId: string; quantity: number; status: string }[];
 }
 
 type QuantityField = 'checkedQuantity' | 'passedQuantity' | 'failedQuantity' | 'goodQuantity' | 'defectiveQuantity';
@@ -101,6 +103,8 @@ export function InspectionDialog({ batchNo, canInspect = false, onClose, onSaved
           { key: 'quarantine', label: '隔离次品', children: current.quarantined },
           { key: 'operator', label: '判定人', children: current.dispositionOperatorId ?? '—' },
         ]} />
+        {!!current.qualityCorrections?.length && <Alert type="warning" showIcon message="该批次有质检更正。原抽检与判定时间保留，更正数量和重新全检结果见更正记录。" />}
+        <Link href={`/wms/operations?tab=quality&batchNo=${encodeURIComponent(batchNo)}`}>查看原批次质检更正与重新检验</Link>
         {canInspect && current.batch.status !== 'DISPOSED' && <InspectionForm key={current.batch.status}
           detail={current} path={path} onSaved={(record) => {
             void detail.mutate(record, { revalidate: false });

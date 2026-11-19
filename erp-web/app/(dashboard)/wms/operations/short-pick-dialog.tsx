@@ -13,7 +13,7 @@ export function ShortPickDialog({ action, saving, pending, error, onClose, onSub
   const candidates = useApi<{ batchNo: string; quantity: number }[]>(action.kind === 'replace'
     ? `${shortPickEndpoint}/${action.review.shortPickId}/replacement-candidates` : null);
   const titles = { report: '登记缺拣', replace: '确认同库位换批', count: '录入缺拣复盘', confirm: '主管确认复盘' };
-  const allocations = action.kind === 'report' ? action.source.allocations.filter((a) => a.plannedQuantity - a.pickedQuantity - a.shortQuantity > 0) : [];
+  const allocations = action.kind === 'report' ? action.source.allocations.filter((a) => a.plannedQuantity - a.pickedQuantity - a.shortQuantity - a.cancelledQuantity > 0) : [];
   const selectedAllocation = Form.useWatch('allocationId', form);
   const remaining = allocations.find((a) => a.allocationId === selectedAllocation);
   return <Modal open title={titles[action.kind]} width={720} onCancel={onClose} maskClosable={false}
@@ -34,10 +34,10 @@ export function ShortPickDialog({ action, saving, pending, error, onClose, onSub
       {action.kind === 'report' && <>
         <Form.Item name="allocationId" label="原拣货分配明细" rules={[{ required: true }]}>
           <Select aria-label="原拣货分配明细" options={allocations.map((a) => ({ value: a.allocationId,
-            label: `${a.sellerSku} · ${a.locationCode} · ${a.batchNo} · 待拣 ${a.plannedQuantity - a.pickedQuantity - a.shortQuantity}` }))} />
+            label: `${a.sellerSku} · ${a.locationCode} · ${a.batchNo} · 待拣 ${a.plannedQuantity - a.pickedQuantity - a.shortQuantity - a.cancelledQuantity}` }))} />
         </Form.Item>
         <Form.Item name="quantity" label="本次缺拣件数" rules={[{ required: true }, { type: 'integer', min: 1,
-          max: remaining ? remaining.plannedQuantity - remaining.pickedQuantity - remaining.shortQuantity : undefined }]}>
+          max: remaining ? remaining.plannedQuantity - remaining.pickedQuantity - remaining.shortQuantity - remaining.cancelledQuantity : undefined }]}>
           <InputNumber aria-label="本次缺拣件数" min={1} precision={0} />
         </Form.Item>
         <Form.Item name="reason" label="缺拣原因" rules={[{ required: true, whitespace: true }]}>

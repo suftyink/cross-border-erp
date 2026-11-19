@@ -55,6 +55,8 @@ public interface InventoryMapper {
     long selectBatchReview(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
                           @Param("sellerSku") String sellerSku);
 
+    long selectQualityHold(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId, @Param("sellerSku") String sellerSku);
+
     boolean hasBatchLocations(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
                               @Param("sellerSku") String sellerSku);
 

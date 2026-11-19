@@ -33,6 +33,7 @@
           AND p.warehouse_id = b.warehouse_id AND p.enabled AND p.purpose = 'GOOD'
           AND o.reference_type = 'PURCHASE_RECEIPT' AND o.status = 'COMPLETED' AND i.disposed_at IS NOT NULL
           AND b.quantity - b.reserved_quantity > b.review_quantity
+          AND NOT EXISTS (SELECT 1 FROM wms_quality_correction c WHERE c.tenant_id = b.tenant_id AND c.batch_no = b.batch_no AND c.inspected_at IS NULL)
         ORDER BY o.created_at, b.batch_no, COALESCE(p.location_code, p.barcode), b.location_id
     </select>
     <update id="reserve">
@@ -40,6 +41,7 @@
         WHERE tenant_id = #{tenantId} AND warehouse_id = #{stock.warehouseId}
           AND batch_no = #{stock.batchNo} AND location_id = #{stock.locationId}
           AND quantity - reserved_quantity - review_quantity &gt;= #{quantity}
+          AND NOT EXISTS (SELECT 1 FROM wms_quality_correction c WHERE c.tenant_id = #{tenantId} AND c.batch_no = #{stock.batchNo} AND c.inspected_at IS NULL)
     </update>
     <insert id="insertAllocation">
         INSERT INTO wms_outbound_allocation(tenant_id, allocation_id, outbound_id, line_id, sales_line_id,
@@ -56,14 +58,14 @@
     <select id="allocations" resultType="com.aidotnet.erp.common.wms.SalesOrderPicking$Allocation">
         SELECT a.allocation_id, a.outbound_id, a.line_id, a.sales_line_id, a.seller_sku, a.location_id,
                COALESCE(p.location_code, p.barcode) AS location_code, a.batch_no, o.order_id, o.reference_id,
-               a.planned_quantity, a.picked_quantity, a.short_quantity
+               a.planned_quantity, a.picked_quantity, a.short_quantity, a.cancelled_quantity
         <include refid="allocationJoins"/>
         WHERE a.tenant_id = #{tenantId} AND a.outbound_id = #{outboundId}
         ORDER BY a.sales_line_id, o.created_at, a.batch_no, COALESCE(p.location_code, p.barcode), a.allocation_id
     </select>
     <sql id="pickSelect">
         SELECT k.request_id, k.outbound_id, k.allocation_id, a.location_id, COALESCE(p.location_code, p.barcode) AS location_code,
-               a.batch_no, a.seller_sku, o.order_id, o.reference_id, k.quantity, k.operator_id, k.created_at
+               a.batch_no, a.seller_sku, o.order_id, o.reference_id, k.quantity, k.operator_id, k.created_at, k.returned_quantity
         <include refid="allocationJoins"/>
         JOIN wms_actual_pick k ON k.tenant_id = a.tenant_id AND k.allocation_id = a.allocation_id
     </sql>
@@ -87,6 +89,13 @@
         INSERT INTO wms_actual_pick(tenant_id, request_id, outbound_id, allocation_id, quantity, operator_id, created_at)
         VALUES (#{tenantId}, #{p.requestId}, #{p.outboundId}, #{p.allocationId}, #{p.quantity}, #{p.operatorId}, #{p.createdAt})
     </insert>
+    <select id="qualityReallocationQuantity" resultType="int">
+        SELECT COALESCE(SUM(cancelled_quantity), 0) - COALESCE(SUM(planned_quantity) FILTER (WHERE quality_replacement), 0)
+        FROM wms_outbound_allocation WHERE tenant_id = #{tenantId} AND outbound_id = #{outboundId} AND line_id = #{lineId}
+    </select>
+    <update id="markQualityReplacement">
+        UPDATE wms_outbound_allocation SET quality_replacement = TRUE WHERE tenant_id = #{tenantId} AND allocation_id = #{allocationId}
+    </update>
     <select id="physicalQuantity" resultType="int">
         SELECT quantity - picked_quantity FROM wms_batch_location_balance
         WHERE tenant_id = #{tenantId} AND batch_no = #{a.batchNo} AND location_id = #{a.locationId}

@@ -2,6 +2,8 @@ package com.aidotnet.erp.wms.application;
 
 import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.wms.domain.PurchaseInspection;
+import com.aidotnet.erp.wms.domain.QualityCorrection;
+import com.aidotnet.erp.wms.infrastructure.mapper.QualityCorrectionMapper;
 import com.aidotnet.erp.wms.domain.PurchaseInspection.Recheck;
 import com.aidotnet.erp.wms.domain.PurchaseInspection.RecheckMethod;
 import com.aidotnet.erp.wms.domain.PurchaseInspection.Sample;
@@ -19,10 +21,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class PurchaseInspectionService {
     private final PurchaseInspectionMapper inspections;
     private final InventoryStore inventory;
+    private final QualityCorrectionMapper corrections;
 
-    public PurchaseInspectionService(PurchaseInspectionMapper inspections, InventoryStore inventory) {
+    public PurchaseInspectionService(PurchaseInspectionMapper inspections, InventoryStore inventory, QualityCorrectionMapper corrections) {
         this.inspections = inspections;
         this.inventory = inventory;
+        this.corrections = corrections;
     }
 
     public List<PurchaseInspectionBatch> work(String tenantId, String purchaseOrderId) {
@@ -31,7 +35,7 @@ public class PurchaseInspectionService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Detail detail(String tenantId, String batchNo) {
-        return detail(findBatch(tenantId, batchNo, false), inspections.selectInspection(tenantId, batchNo));
+        return detail(tenantId, findBatch(tenantId, batchNo, false), inspections.selectInspection(tenantId, batchNo));
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -128,18 +132,21 @@ public class PurchaseInspectionService {
         }
     }
 
-    private Detail detail(PurchaseInspectionBatch batch, PurchaseInspection inspection) {
+    private Detail detail(String tenantId, PurchaseInspectionBatch batch, PurchaseInspection inspection) {
         boolean disposed = inspection != null && inspection.disposedAt() != null;
+        var history = corrections.list(tenantId, batch.batchNo());
+        int correctionPending = history.stream().filter(c -> c.inspectedAt() == null)
+                .mapToInt(c -> c.withdrawnAt() == null ? c.directPendingQuantity() : c.quantity()).sum();
         return new Detail(batch, inspection == null ? null : inspection.inspectionId(),
                 inspection == null ? null : inspection.sample(), inspection == null ? null : inspection.recheck(),
-                disposed ? 0 : batch.receivedQuantity(),
+                (disposed ? 0 : batch.receivedQuantity()) + correctionPending,
                 disposed ? inspection.goodQuantity() - inspection.putawayQuantity() : 0,
                 disposed ? inspection.defectiveQuantity() - inspection.returnedQuantity() : 0,
                 disposed ? inspection.dispositionOperatorId() : null,
-                disposed ? inspection.disposedAt() : null);
+                disposed ? inspection.disposedAt() : null, history);
     }
 
     public record Detail(PurchaseInspectionBatch batch, String inspectionId, Sample sample, Recheck recheck,
                          int pendingInspection, int pendingPutaway, int quarantined,
-                         String dispositionOperatorId, Instant disposedAt) {}
+                         String dispositionOperatorId, Instant disposedAt, List<QualityCorrection> qualityCorrections) {}
 }

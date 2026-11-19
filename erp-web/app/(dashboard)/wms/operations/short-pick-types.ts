@@ -1,6 +1,6 @@
 export interface ShortAllocation {
   allocationId: string; sellerSku: string; locationCode: string; batchNo: string;
-  plannedQuantity: number; pickedQuantity: number; shortQuantity: number;
+  plannedQuantity: number; pickedQuantity: number; shortQuantity: number; cancelledQuantity: number;
 }
 export interface ShortPickSource {
   outboundId: string; allowBatchSubstitution: boolean; allocations: ShortAllocation[];

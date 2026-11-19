@@ -48,7 +48,8 @@
         SELECT COALESCE(SUM(b.quantity - b.reserved_quantity - b.review_quantity), 0) FROM wms_batch_location_balance b
         JOIN wms_warehouse_location l ON l.tenant_id = b.tenant_id AND l.location_id = b.location_id
         WHERE b.tenant_id = #{tenantId} AND b.warehouse_id = #{warehouseId} AND b.seller_sku = #{sellerSku}
-          AND l.purpose = 'GOOD'
+          AND l.purpose = 'GOOD' AND NOT EXISTS (SELECT 1 FROM wms_quality_correction c
+              WHERE c.tenant_id = b.tenant_id AND c.batch_no = b.batch_no AND c.inspected_at IS NULL)
     </select>
 
     <select id="selectBatchReserved" resultType="long">
@@ -60,6 +61,16 @@
         WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId} AND seller_sku = #{sellerSku}
     </select>
 
+    <sql id="qualityHold">
+        (SELECT COALESCE(SUM(h.quantity - h.reserved_quantity - h.review_quantity), 0)
+         FROM wms_batch_location_balance h JOIN wms_warehouse_location hp ON hp.tenant_id = h.tenant_id AND hp.location_id = h.location_id
+         WHERE h.tenant_id = b.tenant_id AND h.warehouse_id = b.warehouse_id AND h.seller_sku = b.seller_sku AND hp.purpose = 'GOOD'
+           AND EXISTS (SELECT 1 FROM wms_quality_correction c WHERE c.tenant_id = h.tenant_id AND c.batch_no = h.batch_no AND c.inspected_at IS NULL))
+    </sql>
+    <select id="selectQualityHold" resultType="long">
+        SELECT <include refid="qualityHold"/> FROM wms_inventory_balance b
+        WHERE b.tenant_id = #{tenantId} AND b.warehouse_id = #{warehouseId} AND b.seller_sku = #{sellerSku}
+    </select>
     <select id="hasBatchLocations" resultType="boolean">
         SELECT EXISTS (
             SELECT 1 FROM wms_batch_location_balance
@@ -70,7 +81,11 @@
 
     <sql id="balancesWithPurchaseStates">
         SELECT b.tenant_id, b.warehouse_id, b.seller_sku, b.on_hand, b.reserved, b.in_transit, b.frozen, b.updated_at,
-               qc.pending_inspection, qc.pending_putaway, qc.quarantined,
+               qc.pending_inspection + (SELECT COALESCE(SUM(CASE WHEN c.withdrawn_at IS NOT NULL THEN c.quantity ELSE c.direct_pending_quantity END), 0)
+                FROM wms_quality_correction c JOIN wms_inbound_order_line cl ON cl.tenant_id = c.tenant_id AND cl.batch_no = c.batch_no
+                JOIN wms_inbound_order co ON co.tenant_id = cl.tenant_id AND co.order_id = cl.order_id
+                WHERE c.tenant_id = b.tenant_id AND co.warehouse_id = b.warehouse_id AND cl.seller_sku = b.seller_sku AND c.inspected_at IS NULL) AS pending_inspection,
+               qc.pending_putaway, qc.quarantined, <include refid="qualityHold"/> AS quality_hold,
                (SELECT COALESCE(SUM(r.review_quantity), 0) FROM wms_batch_location_balance r
                 WHERE r.tenant_id = b.tenant_id AND r.warehouse_id = b.warehouse_id AND r.seller_sku = b.seller_sku) AS pending_review
         FROM wms_inventory_balance b

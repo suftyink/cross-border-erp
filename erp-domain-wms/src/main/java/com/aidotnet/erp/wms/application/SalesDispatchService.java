@@ -30,12 +30,14 @@ public class SalesDispatchService implements WarehouseShipments {
     private final SalesPickingMapper picks;
     private final WmsOrderStore orders;
     private final InventoryStore inventory;
+    private final BatchQualityGuard quality;
 
-    public SalesDispatchService(SalesDispatchMapper dispatch, SalesPickingMapper picks, WmsOrderStore orders, InventoryStore inventory) {
+    public SalesDispatchService(SalesDispatchMapper dispatch, SalesPickingMapper picks, WmsOrderStore orders, InventoryStore inventory, BatchQualityGuard quality) {
         this.dispatch = dispatch;
         this.picks = picks;
         this.orders = orders;
         this.inventory = inventory;
+        this.quality = quality;
     }
 
     @Transactional
@@ -67,7 +69,7 @@ public class SalesDispatchService implements WarehouseShipments {
         for (PackLine line : lines) {
             var pick = actual.stream().filter(p -> p.requestId().equals(line.pickId())).findFirst()
                     .orElseThrow(() -> new BizException("SALES_PACKAGE_PICK_INVALID", "实拣记录不属于当前出库单"));
-            if (line.quantity() > pick.quantity() - dispatch.packedQuantity(tenant, pick.requestId())) {
+            if (line.quantity() > pick.quantity() - pick.returnedQuantity() - dispatch.packedQuantity(tenant, pick.requestId())) {
                 throw new BizException("SALES_PACKAGE_EXCEEDS_PICKED", "装入数量超过该实拣记录尚未装箱的数量");
             }
             var allocation = allocations.stream().filter(a -> a.allocationId().equals(pick.allocationId())).findFirst().orElseThrow();
@@ -81,6 +83,7 @@ public class SalesDispatchService implements WarehouseShipments {
     @Transactional
     public Shipment weigh(String tenant, String packageId, BigDecimal weight) {
         OutboundPackage p = lockPackage(tenant, packageId);
+        if (p.status() == OutboundPackageStatus.CANCELLED) throw new BizException("SALES_PACKAGE_CANCELLED", "包裹已因质检更正作废，请按有效实拣重新装箱");
         if (p.status() == OutboundPackageStatus.SHIPPED) {
             if (p.weightKg().compareTo(weight) != 0) throw new BizException("SALES_PACKAGE_ALREADY_SHIPPED", "已发货包裹不能修改重量");
             return get(tenant, packageId);
@@ -92,6 +95,7 @@ public class SalesDispatchService implements WarehouseShipments {
     @Transactional
     public Shipment ship(String tenant, String packageId, String operator, String carrierCode, String trackingNo) {
         OutboundPackage p = lockPackage(tenant, packageId);
+        if (p.status() == OutboundPackageStatus.CANCELLED) throw new BizException("SALES_PACKAGE_CANCELLED", "包裹已因质检更正作废，请按有效实拣重新装箱");
         carrierCode = carrierCode.strip();
         trackingNo = trackingNo.strip();
         if (p.status() == OutboundPackageStatus.SHIPPED) {
@@ -115,6 +119,7 @@ public class SalesDispatchService implements WarehouseShipments {
         Instant now = Instant.now();
         for (Line line : lines) {
             InventoryBalance before = balances.get(line.sellerSku());
+            quality.requireClear(tenant, line.batchNo());
             int quantity = line.quantity();
             int physical = dispatch.physicalQuantity(tenant, line);
             if (before.reserved() < quantity || before.onHand() < quantity || dispatch.deduct(tenant, line) != 1) {

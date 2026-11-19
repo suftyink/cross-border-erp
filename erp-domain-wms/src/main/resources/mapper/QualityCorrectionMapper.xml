@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.QualityCorrectionMapper">
+    <sql id="caseSelect">
+        SELECT c.correction_id, c.batch_no, o.order_id AS receipt_id, o.reference_id AS purchase_order_id,
+               o.warehouse_id, l.seller_sku, c.quantity, c.reason, c.original_inspection_id, c.original_inspection,
+               c.created_by, c.created_at, c.released_by, c.released_at, c.reversed_quantity,
+               c.direct_pending_quantity, c.excluded_missing_quantity, c.withdrawn_by, c.withdrawn_at, c.good_quantity, c.defective_quantity,
+               c.inspected_by, c.inspected_at
+        FROM wms_quality_correction c
+        JOIN wms_inbound_order_line l ON l.tenant_id = c.tenant_id AND l.batch_no = c.batch_no
+        JOIN wms_inbound_order o ON o.tenant_id = l.tenant_id AND o.order_id = l.order_id
+    </sql>
+    <select id="find" resultType="com.aidotnet.erp.wms.domain.QualityCorrection">
+        <include refid="caseSelect"/> WHERE c.tenant_id = #{tenant} AND c.correction_id = #{id}
+    </select>
+    <select id="list" resultType="com.aidotnet.erp.wms.domain.QualityCorrection">
+        <include refid="caseSelect"/> WHERE c.tenant_id = #{tenant}
+        <if test="batch != null">AND c.batch_no = #{batch}</if>
+        ORDER BY c.created_at DESC, c.correction_id
+    </select>
+    <select id="batchForCase" resultType="string">
+        SELECT batch_no FROM wms_quality_correction WHERE tenant_id = #{tenant} AND correction_id = #{id}
+    </select>
+    <select id="held" resultType="boolean">
+        SELECT EXISTS (SELECT 1 FROM wms_quality_correction
+            WHERE tenant_id = #{tenant} AND batch_no = #{batch} AND inspected_at IS NULL)
+    </select>
+    <update id="excludeMissing">
+        UPDATE wms_quality_correction SET quantity = quantity - #{missing}, excluded_missing_quantity = excluded_missing_quantity + #{missing}
+        WHERE tenant_id = #{tenant} AND batch_no = #{batch} AND inspected_at IS NULL AND withdrawn_at IS NULL
+    </update>
+    <select id="reviewIds" resultType="string">
+        SELECT s.short_pick_id FROM wms_short_pick s JOIN wms_outbound_allocation a ON a.tenant_id = s.tenant_id AND a.allocation_id = s.allocation_id
+        JOIN wms_quality_correction c ON c.tenant_id = a.tenant_id AND c.batch_no = a.batch_no
+        WHERE c.tenant_id = #{tenant} AND c.correction_id = #{id} AND s.reported_at &lt;= c.created_at
+          AND (s.confirmed_at IS NULL OR s.confirmed_at &gt;= c.created_at)
+        ORDER BY s.reported_at, s.short_pick_id
+    </select>
+    <select id="heldOutbound" resultType="boolean">
+        SELECT EXISTS (SELECT 1 FROM wms_outbound_allocation a JOIN wms_quality_correction c
+            ON c.tenant_id = a.tenant_id AND c.batch_no = a.batch_no AND c.inspected_at IS NULL
+            WHERE a.tenant_id = #{tenant} AND a.outbound_id = #{outbound}
+              AND a.planned_quantity - a.short_quantity - a.cancelled_quantity &gt;
+                COALESCE((SELECT SUM(pp.quantity) FROM wms_sales_package_pick pp
+                    JOIN wms_actual_pick k ON k.tenant_id = pp.tenant_id AND k.request_id = pp.pick_id
+                    JOIN wms_outbound_package p ON p.tenant_id = pp.tenant_id AND p.package_id = pp.package_id
+                    WHERE k.tenant_id = a.tenant_id AND k.allocation_id = a.allocation_id AND p.status = 'SHIPPED'), 0))
+    </select>
+    <select id="affectedWorks" resultType="string">
+        SELECT DISTINCT outbound_id FROM wms_outbound_allocation WHERE tenant_id = #{tenant} AND batch_no = #{batch} ORDER BY outbound_id
+    </select>
+    <select id="allocations" resultType="com.aidotnet.erp.common.wms.SalesOrderPicking$Allocation">
+        SELECT a.allocation_id, a.outbound_id, a.line_id, a.sales_line_id, a.seller_sku, a.location_id,
+               COALESCE(p.location_code, p.barcode) AS location_code, a.batch_no, o.order_id, o.reference_id,
+               a.planned_quantity, a.picked_quantity, a.short_quantity, a.cancelled_quantity
+        FROM wms_outbound_allocation a
+        JOIN wms_warehouse_location p ON p.tenant_id = a.tenant_id AND p.location_id = a.location_id
+        JOIN wms_inbound_order_line l ON l.tenant_id = a.tenant_id AND l.batch_no = a.batch_no
+        JOIN wms_inbound_order o ON o.tenant_id = l.tenant_id AND o.order_id = l.order_id
+        WHERE a.tenant_id = #{tenant} AND a.batch_no = #{batch} ORDER BY a.outbound_id, a.allocation_id
+    </select>
+    <select id="picks" resultType="com.aidotnet.erp.wms.infrastructure.mapper.QualityCorrectionMapper$AffectedPick">
+        SELECT k.request_id, k.outbound_id, k.allocation_id, a.line_id, a.location_id,
+               COALESCE(p.location_code, p.barcode) AS location_code, a.batch_no, k.quantity, k.returned_quantity,
+               COALESCE((SELECT SUM(pp.quantity) FROM wms_sales_package_pick pp
+                    JOIN wms_outbound_package op ON op.tenant_id = pp.tenant_id AND op.package_id = pp.package_id
+                    WHERE pp.tenant_id = k.tenant_id AND pp.pick_id = k.request_id AND op.status = 'SHIPPED'), 0) AS shipped_quantity
+        FROM wms_actual_pick k JOIN wms_outbound_allocation a ON a.tenant_id = k.tenant_id AND a.allocation_id = k.allocation_id
+        JOIN wms_warehouse_location p ON p.tenant_id = a.tenant_id AND p.location_id = a.location_id
+        WHERE a.tenant_id = #{tenant} AND a.batch_no = #{batch} ORDER BY k.outbound_id, k.request_id
+    </select>
+    <update id="unpickLocation">
+        UPDATE wms_batch_location_balance SET quantity = quantity - #{quantity},
+            reserved_quantity = reserved_quantity - #{quantity}, picked_quantity = picked_quantity - #{quantity}
+        WHERE tenant_id = #{tenant} AND batch_no = #{batch} AND location_id = #{location}
+          AND picked_quantity &gt;= #{quantity} AND reserved_quantity &gt;= #{quantity}
+    </update>
+    <update id="returnPick">
+        UPDATE wms_actual_pick SET returned_quantity = returned_quantity + #{quantity} WHERE tenant_id = #{tenant} AND request_id = #{pick}
+    </update>
+    <update id="cancelPickedAllocation">
+        UPDATE wms_outbound_allocation SET picked_quantity = picked_quantity - #{quantity}, cancelled_quantity = cancelled_quantity + #{quantity}
+        WHERE tenant_id = #{tenant} AND allocation_id = #{allocation}
+    </update>
+    <update id="reduceLinePicked">
+        UPDATE wms_outbound_order_line SET picked_quantity = picked_quantity - #{quantity} WHERE tenant_id = #{tenant} AND line_id = #{line}
+    </update>
+    <update id="cancelPackages">
+        UPDATE wms_outbound_package p SET status = 'CANCELLED', remark = '质检更正撤拣，原包裹作废', updated_at = CURRENT_TIMESTAMP
+        WHERE p.tenant_id = #{tenant} AND p.status != 'SHIPPED'
+          AND EXISTS (SELECT 1 FROM wms_sales_package_pick pp WHERE pp.tenant_id = p.tenant_id AND pp.package_id = p.package_id AND pp.pick_id = #{pick})
+    </update>
+    <update id="recordDirectPending">
+        UPDATE wms_quality_correction SET direct_pending_quantity = direct_pending_quantity + #{quantity}
+        WHERE tenant_id = #{tenant} AND correction_id = #{id}
+    </update>
+    <update id="cancelAllocation">
+        UPDATE wms_outbound_allocation SET cancelled_quantity = cancelled_quantity + #{quantity}
+        WHERE tenant_id = #{tenant} AND allocation_id = #{allocation}
+    </update>
+    <update id="releaseLocation">
+        UPDATE wms_batch_location_balance SET reserved_quantity = reserved_quantity - #{quantity}
+        WHERE tenant_id = #{tenant} AND batch_no = #{batch} AND location_id = #{location}
+          AND reserved_quantity - picked_quantity &gt;= #{quantity}
+    </update>
+    <update id="markReleased">
+        UPDATE wms_quality_correction SET released_by = #{operator}, released_at = #{at}
+        WHERE tenant_id = #{tenant} AND correction_id = #{id}
+    </update>
+    <select id="totals" resultType="com.aidotnet.erp.wms.infrastructure.mapper.QualityCorrectionMapper$Totals">
+        SELECT COALESCE(SUM(b.quantity), 0) AS quantity, COALESCE(SUM(b.reserved_quantity), 0) AS reserved,
+               COALESCE(SUM(b.picked_quantity), 0) AS picked, COALESCE(SUM(b.review_quantity), 0) AS review,
+               COALESCE(SUM(b.quantity - b.reserved_quantity - b.review_quantity), 0) AS available
+        FROM wms_batch_location_balance b JOIN wms_warehouse_location p ON p.tenant_id = b.tenant_id AND p.location_id = b.location_id
+        WHERE b.tenant_id = #{tenant} AND b.batch_no = #{batch} AND p.purpose = 'GOOD'
+    </select>
+    <select id="placements" resultType="com.aidotnet.erp.wms.infrastructure.mapper.QualityCorrectionMapper$Placement">
+        SELECT t.transaction_id, t.target_location_id AS location_id, COALESCE(p.location_code, p.barcode) AS location_code,
+               t.quantity, COALESCE((SELECT SUM(m.quantity) FROM wms_quality_correction_movement m
+                    WHERE m.tenant_id = t.tenant_id AND m.original_operation_id = t.transaction_id AND m.movement_type = 'PUTAWAY_REVERSE'), 0) AS reversed_quantity
+        FROM wms_inventory_transaction t
+        JOIN wms_warehouse_location p ON p.tenant_id = t.tenant_id AND p.location_id = t.target_location_id
+        WHERE t.tenant_id = #{tenant} AND t.batch_no = #{batch} AND t.transaction_type = 'PURCHASE_PUTAWAY'
+        ORDER BY t.created_at, t.transaction_id
+    </select>
+    <insert id="insert">
+        INSERT INTO wms_quality_correction(tenant_id, correction_id, batch_no, quantity, reason, original_inspection_id,
+            original_inspection, created_by, created_at)
+        SELECT #{tenant}, #{id}, #{batch}, #{quantity}, #{reason}, i.inspection_id, row_to_json(i)::text, #{operator}, #{at}
+        FROM wms_purchase_inspection i WHERE i.tenant_id = #{tenant} AND i.batch_no = #{batch}
+    </insert>
+    <select id="movement" resultType="com.aidotnet.erp.wms.infrastructure.mapper.QualityCorrectionMapper$Movement">
+        SELECT request_id, correction_id, original_operation_id, movement_type, quantity, location_id, operator_id, created_at
+        FROM wms_quality_correction_movement WHERE tenant_id = #{tenant} AND request_id = #{request}
+    </select>
+    <insert id="insertMovement">
+        INSERT INTO wms_quality_correction_movement(tenant_id, request_id, correction_id, original_operation_id, movement_type,
+            quantity, location_id, operator_id, created_at)
+        VALUES (#{tenant}, #{m.requestId}, #{id}, #{m.originalOperationId}, #{m.movementType}, #{m.quantity}, #{m.locationId}, #{m.operatorId}, #{m.createdAt})
+    </insert>
+    <update id="reverseLocation">
+        UPDATE wms_batch_location_balance SET quantity = quantity - #{quantity}
+        WHERE tenant_id = #{tenant} AND batch_no = #{batch} AND location_id = #{location}
+          AND reserved_quantity = picked_quantity AND review_quantity = 0 AND quantity - reserved_quantity &gt;= #{quantity}
+    </update>
+    <update id="reversePutaway">
+        UPDATE wms_purchase_inspection SET putaway_quantity = putaway_quantity - #{quantity}
+        WHERE tenant_id = #{tenant} AND batch_no = #{batch}
+    </update>
+    <update id="recordReversed">
+        UPDATE wms_quality_correction SET reversed_quantity = reversed_quantity + #{quantity}
+        WHERE tenant_id = #{tenant} AND correction_id = #{id}
+    </update>
+    <update id="reduceGood">
+        UPDATE wms_purchase_inspection SET good_quantity = good_quantity - #{quantity}
+        WHERE tenant_id = #{tenant} AND batch_no = #{batch}
+    </update>
+    <update id="withdraw">
+        UPDATE wms_quality_correction SET withdrawn_by = #{operator}, withdrawn_at = #{at}
+        WHERE tenant_id = #{tenant} AND correction_id = #{id}
+    </update>
+    <update id="inspect">
+        UPDATE wms_quality_correction SET good_quantity = #{good}, defective_quantity = #{defective}, inspected_by = #{operator}, inspected_at = #{at}
+        WHERE tenant_id = #{tenant} AND correction_id = #{id}
+    </update>
+    <update id="restoreDisposition">
+        UPDATE wms_purchase_inspection SET good_quantity = good_quantity + #{good}, defective_quantity = defective_quantity + #{defective}
+        WHERE tenant_id = #{tenant} AND batch_no = #{batch}
+    </update>
+</mapper>

@@ -40,6 +40,12 @@ public class SalesPickingController {
         }
         return Result.ok(service.get(user.tenantId(), outboundId.toString()));
     }
+    @PostMapping("/{outboundId}/reallocate")
+    @RequirePermission(WRITE)
+    public Result<Work> reallocate(@PathVariable UUID outboundId, Authentication auth) {
+        var user = current(auth);
+        return Result.ok(service.reallocate(user.tenantId(), outboundId.toString(), user.userId()));
+    }
     @PostMapping("/{outboundId}/picks")
     @RequirePermission(WRITE)
     public Result<ActualPick> pick(@PathVariable UUID outboundId, @Valid @RequestBody PickRequest request, Authentication auth) {

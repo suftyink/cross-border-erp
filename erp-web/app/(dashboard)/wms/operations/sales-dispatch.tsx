@@ -11,11 +11,11 @@ import { WarehouseShipmentLines } from '@/components/warehouse-shipment-lines';
 import type { WarehouseShipment } from '@/types/warehouse-shipment';
 import { newOperationId } from './operation-id';
 
-interface Pick { requestId: string; sellerSku: string; locationCode: string; batchNo: string; quantity: number }
+interface Pick { requestId: string; sellerSku: string; locationCode: string; batchNo: string; quantity: number; returnedQuantity: number }
 type Action = { kind: 'pack' } | { kind: 'weight' | 'ship'; shipment: WarehouseShipment };
 type Attempt = { path: string; body: unknown; label: string };
 const endpoint = '/wms/api/in/v1/sales-dispatch';
-const labels: Record<string, string> = { PACKED: '已打包待称重', WEIGHED: '已称重待发货', SHIPPED: '已实际发货' };
+const labels: Record<string, string> = { PACKED: '已打包待称重', WEIGHED: '已称重待发货', SHIPPED: '已实际发货', CANCELLED: '已作废（质检撤拣）' };
 
 export function SalesDispatch({ outboundId, picks, canShip, onChange }: {
   outboundId: string; picks: Pick[]; canShip: boolean; onChange: () => Promise<unknown>;
@@ -49,7 +49,7 @@ export function SalesDispatch({ outboundId, picks, canShip, onChange }: {
       setError(response?.data?.message ?? '作业结果未确认，请重试原作业。');
     } finally { busy.current = false; setSaving(false); }
   };
-  const available = picks.map((pick) => ({ ...pick, remaining: pick.quantity - (packages.data ?? [])
+  const available = picks.map((pick) => ({ ...pick, remaining: pick.quantity - pick.returnedQuantity - (packages.data ?? []).filter((p) => p.status !== 'CANCELLED')
     .flatMap((p) => p.lines).filter((l) => l.pickId === pick.requestId).reduce((sum, l) => sum + l.quantity, 0) }));
   return <Card title="包裹打包与实际发货" extra={canShip && <Button type="primary" disabled={!!pending || !available.some((p) => p.remaining > 0)}
     onClick={() => { setError(undefined); setAction({ kind: 'pack' }); }}>新建包裹</Button>}>
@@ -68,7 +68,7 @@ export function SalesDispatch({ outboundId, picks, canShip, onChange }: {
           { title: '发货时间', render: (_, row) => row.shippedAt ? new Date(row.shippedAt).toLocaleString() : '—' },
           { title: 'OMS 回写', render: (_, row) => row.omsSyncStatus === 'SYNCED' ? '已回写' : row.status === 'SHIPPED' ? row.syncError ?? '待回写' : '—' },
           { title: '操作', render: (_, row) => <Space wrap>
-            {canShip && row.status !== 'SHIPPED' && <Button disabled={!!pending} onClick={() => { setError(undefined); setAction({ kind: 'weight', shipment: row }); }}>称重</Button>}
+            {canShip && row.status !== 'SHIPPED' && row.status !== 'CANCELLED' && <Button disabled={!!pending} onClick={() => { setError(undefined); setAction({ kind: 'weight', shipment: row }); }}>称重</Button>}
             {canShip && row.status === 'WEIGHED' && <Button disabled={!!pending} onClick={() => { setError(undefined); setAction({ kind: 'ship', shipment: row }); }}>确认实际发货</Button>}
             {canShip && row.status === 'SHIPPED' && row.omsSyncStatus !== 'SYNCED' && <Button disabled={!!pending || saving}
               onClick={() => void send({ path: `${endpoint}/packages/${row.packageId}/sync`, body: {}, label: '订单回写' })}>重试订单回写</Button>}

@@ -11,9 +11,10 @@ import { SalesBatchTrace } from './sales-batch-trace';
 const wms = '/wms/api/in/v1';
 const stockLabels: Record<string, string> = {
   PENDING_INSPECTION: '待检', PENDING_PUTAWAY: '待上架', QUARANTINED: '隔离', AVAILABLE: '可用', RESERVED: '已预占待拣', PICKED: '已拣（发货暂存）',
-  PENDING_REVIEW: '待复核',
+  PENDING_REVIEW: '待复核', QUALITY_HOLD: '质检更正暂停',
 };
 const movementLabels: Record<string, string> = {
+  QUALITY_HOLD: '质检更正暂停', QUALITY_RELEASE: '主管取消预占', PUTAWAY_REVERSE: '撤销上架', SALES_UNPICK: '撤拣直接退待检', INSPECTION_WITHDRAW: '撤销质检判定', QUALITY_REINSPECT: '更正后重新全检',
   RECEIVE: '入库', RESERVE: '预占', RELEASE: '释放预占', DEDUCT: '出库', STOCK_ADJUST: '调整', SALES_PICK: '实拣转发货暂存',
   QUALITY_DISPOSITION: '质检判定', PURCHASE_PUTAWAY: '确认上架',
   PURCHASE_QUARANTINE: '隔离入位', PURCHASE_SUPPLIER_RETURN: '退供出库', SALES_SHIP: '销售实际发货',
@@ -143,7 +144,7 @@ function InventoryLedger() {
           columns={[
             { title: 'SKU', dataIndex: 'sellerSku' }, { title: '在手', dataIndex: 'onHand' },
             { title: '待检', dataIndex: 'pendingInspection' }, { title: '待上架', dataIndex: 'pendingPutaway' },
-            { title: '隔离', dataIndex: 'quarantined' }, { title: '待复核', dataIndex: 'pendingReview' }, { title: '可用', dataIndex: 'available' },
+            { title: '隔离', dataIndex: 'quarantined' }, { title: '待复核', dataIndex: 'pendingReview' }, { title: '质检暂停', dataIndex: 'qualityHold' }, { title: '可用', dataIndex: 'available' },
             { title: '预占', dataIndex: 'reserved' }, { title: '冻结', dataIndex: 'frozen' }, { title: '在途', dataIndex: 'inTransit' },
           ]} /> },
         { key: 'batch', label: '库位与批次', children: <Table<BatchBalance> size="small" scroll={{ x: 'max-content' }}
@@ -165,7 +166,9 @@ function InventoryLedger() {
           loading={transactions.isLoading} dataSource={transactions.data ?? []} scroll={{ x: 'max-content' }} columns={[
             { title: '时间', render: (_, item) => new Date(item.createdAt).toLocaleString() },
             { title: '作业', render: (_, item) => movementLabels[item.transactionType] ?? item.transactionType },
-            { title: '来源单据号', render: (_, item) => item.referenceType === 'SHORT_PICK' && item.referenceId
+            { title: '来源单据号', render: (_, item) => item.referenceType === 'QUALITY_CORRECTION' && item.referenceId
+              ? <Link href={`/wms/operations?correctionId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>
+              : item.referenceType === 'SHORT_PICK' && item.referenceId
               ? <Link href={`/wms/operations?reviewId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>
               : item.referenceType === 'SALES_SHIPMENT' && item.referenceId
               ? <Link href={`/wms/inventory?tab=shipments&packageId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>

@@ -32,11 +32,15 @@
                 UNION ALL
                 SELECT NULL, NULL, 'PENDING_INSPECTION', l.received_quantity WHERE i.disposed_at IS NULL
                 UNION ALL
+                SELECT NULL, NULL, 'PENDING_INSPECTION', CASE WHEN c.withdrawn_at IS NOT NULL THEN c.quantity ELSE c.direct_pending_quantity END
+                FROM wms_quality_correction c WHERE c.tenant_id = o.tenant_id AND c.batch_no = l.batch_no AND c.inspected_at IS NULL
+                UNION ALL
                 SELECT NULL, NULL, 'QUARANTINED', i.defective_quantity - i.isolated_quantity
                 WHERE i.disposed_at IS NOT NULL
                 UNION ALL
                 SELECT b.location_id, COALESCE(p.location_code, p.barcode),
-                       CASE WHEN p.purpose = 'QUARANTINE' THEN 'QUARANTINED' ELSE 'AVAILABLE' END,
+                       CASE WHEN p.purpose = 'QUARANTINE' THEN 'QUARANTINED'
+                            WHEN EXISTS (SELECT 1 FROM wms_quality_correction c WHERE c.tenant_id = b.tenant_id AND c.batch_no = b.batch_no AND c.inspected_at IS NULL) THEN 'QUALITY_HOLD' ELSE 'AVAILABLE' END,
                        b.quantity - b.reserved_quantity - b.review_quantity
                 FROM wms_batch_location_balance b
                 JOIN wms_warehouse_location p ON p.location_id = b.location_id AND p.tenant_id = b.tenant_id
