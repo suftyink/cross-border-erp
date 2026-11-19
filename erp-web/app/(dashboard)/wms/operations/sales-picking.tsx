@@ -12,6 +12,7 @@ import { newOperationId } from './operation-id';
 import { SalesDispatch } from './sales-dispatch';
 import { ShortPickWork } from './short-pick-work';
 import { FbaCartons } from './fba-cartons';
+import { FbaDispatch } from './fba-dispatch';
 
 interface Allocation {
   allocationId: string; lineId: string; salesLineId: string; sellerSku: string;
@@ -35,7 +36,7 @@ const labels: Record<string, string> = { QUALITY_HOLD: '质检更正暂停', NEE
 export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOrderId: string | null; outboundId: string | null; warehouses: Warehouse[] }) {
   const tenant = useAuthStore((s) => s.tenantId);
   const storageKey = `wms:pending-sales-pick:${tenant}`;
-  const work = useApi<{ canPick: boolean; canShip: boolean; canPack: boolean; orders: Work[] }>(`${endpoint}/work${salesOrderId ? `?salesOrderId=${encodeURIComponent(salesOrderId)}` : ''}`);
+  const work = useApi<{ canPick: boolean; canShip: boolean; canPack: boolean; canFba: boolean; orders: Work[] }>(`${endpoint}/work${salesOrderId ? `?salesOrderId=${encodeURIComponent(salesOrderId)}` : ''}`);
   const [selectedId, setSelectedId] = useState<string | undefined>(outboundId ?? undefined);
   const selected = work.data?.orders.find((o) => o.outboundId === selectedId);
   const [allocation, setAllocation] = useState<Allocation>();
@@ -87,7 +88,7 @@ export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOr
     {work.data?.canPick === false && <Alert type="info" showIcon message="当前账号没有实拣登记权限" />}
     {pending && <Alert type="warning" showIcon message={`实拣结果待确认 · ${pending.locationCode} · ${pending.quantity} 件`}
       action={<Button loading={saving} disabled={!work.data?.canPick} onClick={() => void submit(pending)}>重试原实拣</Button>} />}
-    {(work.isLoading || work.data?.canPick || work.data?.canShip || work.data?.canPack) && <Card title="销售与 FBA 拣货待办">
+    {(work.isLoading || work.data?.canPick || work.data?.canShip || work.data?.canPack || work.data?.canFba) && <Card title="销售与 FBA 拣货待办">
       <Table<Work> rowKey="outboundId" loading={work.isLoading} dataSource={work.data?.orders ?? []} scroll={{ x: 'max-content' }} columns={[
         { title: '出库单', dataIndex: 'outboundId' },
         { title: '来源单据', render: (_, row) => row.sourceType === 'FBA_SHIPMENT'
@@ -133,6 +134,7 @@ export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOr
     </Card>}
     {selected && <ShortPickWork key={`review-${selected.outboundId}`} source={selected} />}
     {selected?.sourceType === 'FBA_SHIPMENT' && <FbaCartons key={selected.outboundId} work={selected} />}
+    {selected?.sourceType === 'FBA_SHIPMENT' && <FbaDispatch key={`dispatch-${selected.outboundId}`} outboundId={selected.outboundId} onChange={() => work.mutate()} />}
     {selected && selected.sourceType !== 'FBA_SHIPMENT' && <SalesDispatch key={selected.outboundId} outboundId={selected.outboundId} picks={selected.picks}
       canShip={!!work.data?.canShip && selected.status !== 'QUALITY_HOLD'} onChange={() => work.mutate()} />}
     {selected && allocation && <PickDialog allocation={allocation} saving={saving} pending={pending} error={error}

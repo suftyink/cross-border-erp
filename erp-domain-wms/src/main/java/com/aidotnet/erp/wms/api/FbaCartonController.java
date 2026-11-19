@@ -26,8 +26,10 @@ public class FbaCartonController {
             @RequestParam(required = false) String purchaseOrderId, Authentication auth) {
         var user = current(auth);
         boolean pack = permitted(auth, "wms:carton:write");
-        boolean read = pack || permitted(auth, "wms:pick:write") || permitted(auth, "fba:warehouse:write");
-        return Result.ok(new CartonList(pack, read ? service.list(user.tenantId(),
+        boolean bind = permitted(auth, "wms:fba-bind:write");
+        boolean read = pack || bind || permitted(auth, "wms:fba-ship:write") || permitted(auth, "fba:label:write")
+                || permitted(auth, "wms:pick:write") || permitted(auth, "fba:warehouse:write");
+        return Result.ok(new CartonList(pack, bind, read ? service.list(user.tenantId(),
                 new FbaCartonMapper.Filter(outboundId, cartonCode, batchNo, purchaseOrderId)) : List.of()));
     }
 
@@ -50,5 +52,5 @@ public class FbaCartonController {
     public record Pack(@NotNull UUID requestId, @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]*") String cartonCode,
                        @NotEmpty @Size(max = 200) List<@NotNull @Valid Line> lines) {}
     public record Line(@NotNull UUID pickId, @NotBlank @Size(max = 128) String sellerSku, @NotNull UUID batchNo, @Positive int quantity) {}
-    public record CartonList(boolean canPack, List<FbaCartonService.Carton> cartons) {}
+    public record CartonList(boolean canPack, boolean canBind, List<FbaCartonService.Carton> cartons) {}
 }

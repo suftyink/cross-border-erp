@@ -11,7 +11,7 @@ import { newOperationId } from './operation-id';
 
 interface Pick { requestId: string; sellerSku: string; batchNo: string; quantity: number; returnedQuantity: number }
 interface Line { pickId: string; sellerSku: string; batchNo: string; quantity: number; receiptId: string; purchaseOrderId: string; locationCode: string }
-interface Carton { cartonId: string; requestId: string; cartonCode: string; outboundId: string; fbaShipmentId: string; status: string; operatorId: string; createdAt: string; lines: Line[] }
+export interface Carton { cartonId: string; requestId: string; cartonCode: string; outboundId: string; fbaShipmentId: string; status: string; operatorId: string; createdAt: string; lines: Line[]; fbaBoxNumber?: string; bindingActive: boolean; boundBy?: string; boundAt?: string }
 interface Values { cartonCode?: string; lines: { pickId: string; sellerSku: string; batchNo: string; quantity: number }[] }
 type Attempt = Values & { requestId: string; outboundId: string };
 const endpoint = '/wms/api/in/v1/fba-cartons';
@@ -26,7 +26,7 @@ export function CartonTrace({ outboundId, batchNo, purchaseOrderId }: { outbound
   if (search.trim()) params.set('cartonCode', search.trim());
   const query = useApi<{ cartons: Carton[] }>(`${endpoint}?${params}`);
   return <Card title="FBA 箱内追溯">
-    <Input.Search aria-label="内部箱号" placeholder="输入完整内部箱号查询" value={code} onChange={e => setCode(e.target.value)}
+    <Input.Search aria-label="内部或 FBA 箱号" placeholder="输入完整内部箱号或 FBA 箱号查询" value={code} onChange={e => setCode(e.target.value)}
       onSearch={setSearch} enterButton="查询箱号" allowClear style={{ maxWidth: 480, marginBottom: 16 }} />
     {query.error && <Alert type="error" message="箱内记录加载失败" action={<Button onClick={() => void query.mutate()}>重试加载</Button>} />}
     <CartonTable data={query.data?.cartons ?? []} loading={query.isLoading} />
@@ -42,6 +42,8 @@ function CartonTable({ data, loading }: { data: Carton[]; loading?: boolean }) {
       { title: '收货来源', render: (_, l) => <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(l.purchaseOrderId)}&batchNo=${encodeURIComponent(l.batchNo)}`}>{l.receiptId}</Link> },
     ]} /> }} columns={[
       { title: '内部箱号', dataIndex: 'cartonCode' },
+      { title: 'FBA 箱号', render: (_, c) => c.fbaBoxNumber ?? '尚未绑定' },
+      { title: '贴标人 / 时间', render: (_, c) => c.boundAt ? `${c.boundBy} · ${new Date(c.boundAt).toLocaleString()}` : '尚未确认贴标' },
       { title: '实装总件数', render: (_, c) => c.lines.reduce((n, l) => n + l.quantity, 0) },
       { title: '状态', render: (_, c) => c.status === 'CANCELLED' ? '已因质检更正作废' : c.status === 'SHIPPED' ? '已出库' : '已装箱，待后续贴标发货' },
       { title: '备货单', render: (_, c) => <Link href={`/fba/shipments?shipmentId=${c.fbaShipmentId}`}>{c.fbaShipmentId}</Link> },

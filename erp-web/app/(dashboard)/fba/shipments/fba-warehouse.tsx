@@ -7,18 +7,22 @@ import { isAxiosError } from 'axios';
 import { useApi } from '@/lib/hooks';
 import { post } from '@/lib/api/client';
 import type { Warehouse } from '@/types';
+import { FbaBoxLabels, type BoxLabelPlan } from './fba-box-labels';
 
 interface Work { outboundId: string; status: string; warehouseId: string; requiredQuantity: number }
 interface Row {
   shipment: { fbaShipmentId: string; amazonShipmentId: string; destinationFc: string; plannedQuantity: number; status: string };
   warehouseWork: Work | null;
+  boxLabelPlan?: BoxLabelPlan | null;
+  warehouseShipment?: { quantity: number; cartonCount: number; trackingNo: string; shippedAt: string } | null;
 }
 const states: Record<string, string> = { DRAFT: '草稿', SUBMITTED: '已提交', PACKED: '已打包', SHIPPED: '已发货', CLOSED: '已关闭', CANCELLED: '已取消' };
 
 export function FbaWarehouse() {
-  const work = useApi<{ canDispatch: boolean; orders: Row[] }>('/fba/api/in/v1/warehouse-work');
+  const work = useApi<{ canDispatch: boolean; canRegisterLabels: boolean; orders: Row[] }>('/fba/api/in/v1/warehouse-work');
   const warehouses = useApi<Warehouse[]>('/wms/api/in/v1/warehouses');
   const [selected, setSelected] = useState<Row>();
+  const [labelRow, setLabelRow] = useState<Row>();
   const [warehouse, setWarehouse] = useState<string>();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -44,10 +48,18 @@ export function FbaWarehouse() {
       { title: '目的仓', render: (_, r) => r.shipment.destinationFc },
       { title: '计划件数', render: (_, r) => r.shipment.plannedQuantity },
       { title: 'FBA 状态', render: (_, r) => <Tag>{states[r.shipment.status] ?? r.shipment.status}</Tag> },
+      { title: 'Seller Central 箱号', render: (_, r) => r.boxLabelPlan ? `${r.boxLabelPlan.boxNumbers.length} 箱已登记` : '尚未登记' },
+      { title: '本地仓实际出库', render: (_, r) => r.warehouseShipment
+        ? `${r.warehouseShipment.cartonCount} 箱 / ${r.warehouseShipment.quantity} 件 · ${r.warehouseShipment.trackingNo}` : '尚未收到仓库出库结果' },
       { title: '本地仓储作业', render: (_, r) => r.warehouseWork ? <Link href={`/wms/operations?outboundId=${r.warehouseWork.outboundId}`}>查看拣货与装箱</Link> : '尚未下发' },
-      { title: '操作', render: (_, r) => !r.warehouseWork && r.shipment.status === 'SUBMITTED' && work.data?.canDispatch
-        ? <Button onClick={() => { setSelected(r); setWarehouse(undefined); setError(undefined); }}>下发仓储</Button> : null },
+      { title: '操作', render: (_, r) => <Space wrap>
+        {!r.warehouseWork && r.shipment.status === 'SUBMITTED' && work.data?.canDispatch
+          && <Button onClick={() => { setSelected(r); setWarehouse(undefined); setError(undefined); }}>下发仓储</Button>}
+        {(r.boxLabelPlan || work.data?.canRegisterLabels && ['DRAFT', 'SUBMITTED'].includes(r.shipment.status))
+          && <Button onClick={() => setLabelRow(r)}>{r.boxLabelPlan ? '查看箱号清单' : '登记 Seller Central 箱号'}</Button>}
+      </Space> },
     ]} />
+    {labelRow && <FbaBoxLabels shipment={labelRow.shipment} plan={labelRow.boxLabelPlan} onClose={() => setLabelRow(undefined)} onSaved={() => work.mutate()} />}
     <Modal title="下发 FBA 仓储作业" open={!!selected} onCancel={() => !saving && setSelected(undefined)} maskClosable={false}
       okText="确认下发" onOk={() => void dispatch()} confirmLoading={saving} okButtonProps={{ disabled: !warehouse }} cancelButtonProps={{ disabled: saving }}>
       {error && <Alert type="error" message={error} />}

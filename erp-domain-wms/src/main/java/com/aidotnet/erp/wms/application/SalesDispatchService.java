@@ -2,21 +2,18 @@ package com.aidotnet.erp.wms.application;
 
 import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.common.wms.WarehouseShipments;
-import com.aidotnet.erp.wms.domain.InventoryBalance;
 import com.aidotnet.erp.wms.domain.InventoryTransaction;
 import com.aidotnet.erp.wms.domain.OutboundOrder;
 import com.aidotnet.erp.wms.domain.OutboundOrderStatus;
 import com.aidotnet.erp.wms.domain.OutboundPackage;
 import com.aidotnet.erp.wms.domain.OutboundPackageLine;
 import com.aidotnet.erp.wms.domain.OutboundPackageStatus;
-import com.aidotnet.erp.wms.infrastructure.InventoryStore;
 import com.aidotnet.erp.wms.infrastructure.WmsOrderStore;
 import com.aidotnet.erp.wms.infrastructure.mapper.SalesDispatchMapper;
 import com.aidotnet.erp.wms.infrastructure.mapper.SalesPickingMapper;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,15 +26,13 @@ public class SalesDispatchService implements WarehouseShipments {
     private final SalesDispatchMapper dispatch;
     private final SalesPickingMapper picks;
     private final WmsOrderStore orders;
-    private final InventoryStore inventory;
-    private final BatchQualityGuard quality;
+    private final ShipmentStockPosting posting;
 
-    public SalesDispatchService(SalesDispatchMapper dispatch, SalesPickingMapper picks, WmsOrderStore orders, InventoryStore inventory, BatchQualityGuard quality) {
+    public SalesDispatchService(SalesDispatchMapper dispatch, SalesPickingMapper picks, WmsOrderStore orders, ShipmentStockPosting posting) {
         this.dispatch = dispatch;
         this.picks = picks;
         this.orders = orders;
-        this.inventory = inventory;
-        this.quality = quality;
+        this.posting = posting;
     }
 
     @Transactional
@@ -111,29 +106,9 @@ public class SalesDispatchService implements WarehouseShipments {
         if (work.status() != OutboundOrderStatus.PICKING) throw new BizException("SALES_PACKAGE_STATUS_INVALID", "当前出库单不允许发货");
         List<Line> lines = dispatch.lines(tenant, packageId);
         if (lines.isEmpty()) throw new BizException("SALES_PACKAGE_LINES_INVALID", "包裹没有实拣明细");
-        Map<String, InventoryBalance> balances = new LinkedHashMap<>();
-        for (String sku : lines.stream().map(Line::sellerSku).distinct().sorted().toList()) {
-            balances.put(sku, inventory.lockBalance(tenant, p.warehouseId(), sku)
-                    .orElseThrow(() -> new BizException("INVENTORY_NOT_FOUND", "库存不存在")));
-        }
         Instant now = Instant.now();
-        for (Line line : lines) {
-            InventoryBalance before = balances.get(line.sellerSku());
-            quality.requireClear(tenant, line.batchNo());
-            int quantity = line.quantity();
-            int physical = dispatch.physicalQuantity(tenant, line);
-            if (before.reserved() < quantity || before.onHand() < quantity || dispatch.deduct(tenant, line) != 1) {
-                throw new BizException("SALES_SHIPMENT_STOCK_INVALID", "实拣暂存或预占库存不足，请核查库存");
-            }
-            InventoryBalance after = new InventoryBalance(tenant, p.warehouseId(), line.sellerSku(),
-                    before.onHand() - quantity, before.reserved() - quantity, before.inTransit(), before.frozen(), now);
-            inventory.saveBalance(after);
-            inventory.saveTransaction(new InventoryTransaction(UUID.randomUUID().toString(), tenant, p.warehouseId(),
-                    line.sellerSku(), InventoryTransaction.TransactionType.SALES_SHIP, quantity, before.onHand(), before.reserved(),
-                    after.onHand(), after.reserved(), "SALES_SHIPMENT", packageId, "发货暂存出库，原库位 " + line.locationCode(), now,
-                    line.batchNo(), operator, 0, 0, 0, line.locationId(), null, physical, physical, null, null, 0));
-            balances.put(line.sellerSku(), after);
-        }
+        posting.post(tenant, p.warehouseId(), lines.stream().map(l -> new ShipmentStockPosting.Detail(l, "发货暂存出库，原库位 " + l.locationCode())).toList(),
+                new ShipmentStockPosting.Reference(InventoryTransaction.TransactionType.SALES_SHIP, "SALES_SHIPMENT", packageId), operator, now);
         orders.saveOutboundPackage(copy(p, OutboundPackageStatus.SHIPPED, p.weightKg(), carrierCode, trackingNo, now));
         dispatch.insertShipment(tenant, packageId, p.orderId(), operator, now);
         int required = orders.listOutboundOrderLines(p.orderId()).stream().mapToInt(l -> l.requiredQuantity()).sum();

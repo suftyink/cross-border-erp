@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.fba.infrastructure.mapper.FbaShipmentResultMapper">
+    <sql id="selectResult">
+        SELECT outbound_id, fba_shipment_id, warehouse_id, amazon_shipment_id, quantity, carton_count,
+               carrier_code, tracking_no, operator_id, shipped_at FROM fba_warehouse_shipment
+    </sql>
+    <select id="find" resultType="com.aidotnet.erp.common.fba.FbaWarehouseShipments$Shipment">
+        <include refid="selectResult"/> WHERE tenant_id = #{tenant} AND outbound_id = #{outbound}
+    </select>
+    <select id="forShipment" resultType="com.aidotnet.erp.common.fba.FbaWarehouseShipments$Shipment">
+        <include refid="selectResult"/> WHERE tenant_id = #{tenant} AND fba_shipment_id = #{shipment}
+    </select>
+    <insert id="insert">
+        INSERT INTO fba_warehouse_shipment(tenant_id, outbound_id, fba_shipment_id, warehouse_id, amazon_shipment_id,
+            quantity, carton_count, carrier_code, tracking_no, operator_id, shipped_at)
+        VALUES (#{tenant}, #{r.outboundId}, #{r.fbaShipmentId}, #{r.warehouseId}, #{r.amazonShipmentId},
+            #{r.quantity}, #{r.cartonCount}, #{r.carrierCode}, #{r.trackingNo}, #{r.operatorId}, #{r.shippedAt})
+    </insert>
+    <update id="updateShipment">
+        UPDATE fba_shipment SET status = 'SHIPPED', carrier = #{r.carrierCode}, tracking_no = #{r.trackingNo},
+            carton_count = #{r.cartonCount}, shipped_at = #{r.shippedAt}, updated_at = CURRENT_TIMESTAMP
+        WHERE tenant_id = #{tenant} AND fba_shipment_id = #{r.fbaShipmentId}
+    </update>
+</mapper>

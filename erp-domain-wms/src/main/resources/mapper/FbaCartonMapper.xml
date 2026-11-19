@@ -3,10 +3,12 @@
 <mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.FbaCartonMapper">
     <sql id="cartonSelect">
         SELECT c.carton_id, c.request_id, c.carton_code, c.requested_code, c.outbound_id,
-               o.reference_id AS fba_shipment_id, p.status, c.operator_id, c.created_at
+               o.reference_id AS fba_shipment_id, p.status, c.operator_id, c.created_at,
+               b.fba_box_number, COALESCE(b.active, FALSE) AS binding_active, b.bound_by, b.bound_at
         FROM wms_fba_carton c
         JOIN wms_outbound_package p ON p.tenant_id = c.tenant_id AND p.package_id = c.carton_id
         JOIN wms_outbound_order o ON o.tenant_id = c.tenant_id AND o.order_id = c.outbound_id
+        LEFT JOIN wms_fba_box_binding b ON b.tenant_id = c.tenant_id AND b.carton_id = c.carton_id
     </sql>
     <select id="findRequest" resultType="com.aidotnet.erp.wms.infrastructure.mapper.FbaCartonMapper$CartonRecord">
         <include refid="cartonSelect"/> WHERE c.tenant_id = #{tenant} AND c.request_id = #{request}
@@ -20,7 +22,7 @@
         <include refid="cartonSelect"/>
         WHERE c.tenant_id = #{tenant}
         <if test="filter.outboundId != null">AND c.outbound_id = #{filter.outboundId}</if>
-        <if test="filter.cartonCode != null">AND c.carton_code = #{filter.cartonCode}</if>
+        <if test="filter.cartonCode != null">AND c.carton_id = (SELECT i.carton_id FROM wms_fba_box_identifier i WHERE i.tenant_id = #{tenant} AND i.box_code = #{filter.cartonCode})</if>
         <if test="filter.batchNo != null or filter.purchaseOrderId != null">
             AND EXISTS (SELECT 1 FROM wms_sales_package_pick pp
                 JOIN wms_actual_pick k ON k.tenant_id = pp.tenant_id AND k.request_id = pp.pick_id
@@ -33,4 +35,24 @@
         </if>
         ORDER BY c.created_at, c.carton_id
     </select>
+    <update id="releaseCancelledBinding">
+        UPDATE wms_fba_box_binding b SET active = FALSE
+        WHERE b.tenant_id = #{tenant} AND b.fba_box_number = #{box} AND b.active
+          AND EXISTS (SELECT 1 FROM wms_outbound_package p WHERE p.tenant_id = b.tenant_id AND p.package_id = b.carton_id AND p.status = 'CANCELLED')
+    </update>
+    <insert id="bind">
+        INSERT INTO wms_fba_box_binding(tenant_id, carton_id, fba_box_number, bound_by, bound_at)
+        VALUES (#{tenant}, #{carton}, #{box}, #{operator}, #{at}) ON CONFLICT DO NOTHING
+    </insert>
+    <insert id="registerInternalCode">
+        INSERT INTO wms_fba_box_identifier(tenant_id, box_code, carton_id, kind)
+        VALUES (#{tenant}, #{code}, #{carton}, 'INTERNAL') ON CONFLICT DO NOTHING
+    </insert>
+    <insert id="registerFbaCode">
+        INSERT INTO wms_fba_box_identifier AS i(tenant_id, box_code, carton_id, kind)
+        VALUES (#{tenant}, #{code}, #{carton}, 'FBA')
+        ON CONFLICT (tenant_id, box_code) DO UPDATE SET carton_id = EXCLUDED.carton_id
+        WHERE i.carton_id = EXCLUDED.carton_id OR (i.kind = 'FBA' AND EXISTS (
+            SELECT 1 FROM wms_outbound_package p WHERE p.tenant_id = i.tenant_id AND p.package_id = i.carton_id AND p.status = 'CANCELLED'))
+    </insert>
 </mapper>

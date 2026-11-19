@@ -77,6 +77,7 @@ public class FbaCartonService {
                 OutboundPackageStatus.PACKED, "FBA 内部箱 " + code, now, null, now, now));
         var record = new CartonRecord(id, command.requestId(), code, requestedCode, outbound, work.sourceId(), "PACKED", operator, now);
         if (cartons.insert(tenant, record) != 1) throw new BizException("FBA_CARTON_CONFLICT", "内部箱号或操作编号已用于其他装箱，请查询原记录");
+        if (cartons.registerInternalCode(tenant, id, code) != 1) throw new BizException("FBA_CARTON_CONFLICT", "该箱号已用于其他内部箱或 FBA 箱标");
         for (PackLine line : command.lines()) {
             var pick = work.picks().stream().filter(p -> p.requestId().equals(line.pickId())).findFirst().orElseThrow();
             var allocation = work.allocations().stream().filter(a -> a.allocationId().equals(pick.allocationId())).findFirst().orElseThrow();
@@ -100,11 +101,12 @@ public class FbaCartonService {
     }
     private Carton detail(String tenant, CartonRecord c) {
         return new Carton(c.cartonId(), c.requestId(), c.cartonCode(), c.outboundId(), c.fbaShipmentId(), c.status(),
-                c.operatorId(), c.createdAt(), packing.lines(tenant, c.cartonId()));
+                c.operatorId(), c.createdAt(), packing.lines(tenant, c.cartonId()), c.fbaBoxNumber(), c.bindingActive(), c.boundBy(), c.boundAt());
     }
     private BizException conflict() { return new BizException("FBA_CARTON_REQUEST_CONFLICT", "该操作编号已用于不同的装箱内容"); }
     public record PackLine(String pickId, String sellerSku, String batchNo, int quantity) {}
     public record Command(String requestId, String cartonCode, List<PackLine> lines) {}
     public record Carton(String cartonId, String requestId, String cartonCode, String outboundId, String fbaShipmentId,
-                         String status, String operatorId, Instant createdAt, List<WarehouseShipments.Line> lines) {}
+                         String status, String operatorId, Instant createdAt, List<WarehouseShipments.Line> lines,
+                         String fbaBoxNumber, boolean bindingActive, String boundBy, Instant boundAt) {}
 }

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.FbaDispatchMapper">
+    <select id="find" resultType="com.aidotnet.erp.wms.infrastructure.mapper.FbaDispatchMapper$DispatchRecord">
+        SELECT outbound_id, fba_shipment_id, warehouse_id, amazon_shipment_id, quantity, carton_count, carrier_code,
+               tracking_no, operator_id, shipped_at, 'SHIPPED' AS status, sync_status, sync_error
+        FROM wms_fba_shipment WHERE tenant_id = #{tenant} AND outbound_id = #{outbound}
+    </select>
+    <insert id="insert">
+        INSERT INTO wms_fba_shipment(tenant_id, outbound_id, fba_shipment_id, warehouse_id, amazon_shipment_id,
+            quantity, carton_count, carrier_code, tracking_no, operator_id, shipped_at)
+        VALUES (#{tenant}, #{r.outboundId}, #{r.fbaShipmentId}, #{r.warehouseId}, #{r.amazonShipmentId},
+            #{r.quantity}, #{r.cartonCount}, #{r.carrierCode}, #{r.trackingNo}, #{r.operatorId}, #{r.shippedAt})
+    </insert>
+    <select id="lock" resultType="string">
+        SELECT sync_status FROM wms_fba_shipment WHERE tenant_id = #{tenant} AND outbound_id = #{outbound} FOR UPDATE
+    </select>
+    <update id="synced">
+        UPDATE wms_fba_shipment SET sync_status = 'SYNCED', sync_error = NULL, sync_attempts = sync_attempts + 1, synced_at = CURRENT_TIMESTAMP
+        WHERE tenant_id = #{tenant} AND outbound_id = #{outbound}
+    </update>
+    <update id="failed">
+        UPDATE wms_fba_shipment SET sync_error = 'FBA 回写失败，可重试', sync_attempts = sync_attempts + 1
+        WHERE tenant_id = #{tenant} AND outbound_id = #{outbound} AND sync_status = 'PENDING'
+    </update>
+    <!-- 与销售回写作业一致：后台跨租户领取持久化凭证，处理前设置对应租户上下文。 -->
+    <select id="pending" resultType="com.aidotnet.erp.wms.infrastructure.mapper.FbaDispatchMapper$Pending">
+        SELECT tenant_id, outbound_id FROM wms_fba_shipment WHERE sync_status = 'PENDING' ORDER BY sync_attempts, shipped_at, tenant_id, outbound_id LIMIT 100
+    </select>
+</mapper>

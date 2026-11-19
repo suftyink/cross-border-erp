@@ -2,6 +2,9 @@ package com.aidotnet.erp.fba.application;
 
 import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.common.wms.FbaWarehousePicking;
+import com.aidotnet.erp.common.fba.FbaBoxLabels;
+import com.aidotnet.erp.common.fba.FbaWarehouseShipments;
+import com.aidotnet.erp.fba.infrastructure.mapper.FbaShipmentResultMapper;
 import com.aidotnet.erp.common.wms.SalesOrderPicking;
 import com.aidotnet.erp.fba.domain.FbaShipmentStatus;
 import com.aidotnet.erp.fba.domain.FbaShipment;
@@ -16,11 +19,15 @@ public class FbaWarehouseService {
     private final FbaWarehouseMapper mapper;
     private final FbaShipmentRepository shipments;
     private final FbaWarehousePicking picking;
+    private final FbaBoxLabels labels;
+    private final FbaShipmentResultMapper results;
 
-    public FbaWarehouseService(FbaWarehouseMapper mapper, FbaShipmentRepository shipments, FbaWarehousePicking picking) {
+    public FbaWarehouseService(FbaWarehouseMapper mapper, FbaShipmentRepository shipments, FbaWarehousePicking picking, FbaBoxLabels labels, FbaShipmentResultMapper results) {
         this.mapper = mapper;
         this.shipments = shipments;
         this.picking = picking;
+        this.labels = labels;
+        this.results = results;
     }
 
     @Transactional
@@ -51,8 +58,8 @@ public class FbaWarehouseService {
     }
     @Transactional(readOnly = true)
     public List<Row> list(String tenant) {
-        return shipments.list(tenant, null).stream().map(s -> new Row(s, picking.findFbaWork(tenant, s.fbaShipmentId()))).toList();
+        return shipments.list(tenant, null).stream().map(s -> new Row(s, picking.findFbaWork(tenant, s.fbaShipmentId()), labels.find(tenant, s.fbaShipmentId()), results.forShipment(tenant, s.fbaShipmentId()))).toList();
     }
-    public record Row(FbaShipment shipment, SalesOrderPicking.Work warehouseWork) {}
+    public record Row(FbaShipment shipment, SalesOrderPicking.Work warehouseWork, FbaBoxLabels.Plan boxLabelPlan, FbaWarehouseShipments.Shipment warehouseShipment) {}
     private BizException notFound() { return new BizException("FBA_SHIPMENT_NOT_FOUND", "FBA 备货单不存在"); }
 }

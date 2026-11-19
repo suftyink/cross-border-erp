@@ -24,8 +24,10 @@ public class FbaWarehouseController {
     public Result<WorkList> list(Authentication auth) {
         var user = current(auth);
         boolean dispatch = permitted(auth, "fba:warehouse:write");
-        boolean read = dispatch || permitted(auth, "wms:pick:write") || permitted(auth, "wms:carton:write");
-        return Result.ok(new WorkList(dispatch, read ? service.list(user.tenantId()) : List.of()));
+        boolean register = permitted(auth, "fba:label:write");
+        boolean read = dispatch || register || permitted(auth, "wms:pick:write") || permitted(auth, "wms:carton:write")
+                || permitted(auth, "wms:fba-bind:write") || permitted(auth, "wms:fba-ship:write");
+        return Result.ok(new WorkList(dispatch, register, read ? service.list(user.tenantId()) : List.of()));
     }
 
     @GetMapping("/shipments/{shipmentId}/warehouse-work")
@@ -49,6 +51,6 @@ public class FbaWarehouseController {
     private boolean permitted(Authentication auth, String permission) {
         return auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_" + permission) || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
     }
-    public record WorkList(boolean canDispatch, List<FbaWarehouseService.Row> orders) {}
+    public record WorkList(boolean canDispatch, boolean canRegisterLabels, List<FbaWarehouseService.Row> orders) {}
     public record Dispatch(@NotNull UUID warehouseId) {}
 }

@@ -15,6 +15,7 @@ const stockLabels: Record<string, string> = {
   UNIDENTIFIED_RETURN: '批次不明退货（隔离待核实）', PENDING_REVIEW: '待复核', QUALITY_HOLD: '质检更正暂停',
 };
 const movementLabels: Record<string, string> = {
+  FBA_SHIP: 'FBA 整单实际出库',
   SALES_RETURN_RECEIVE: '销售退货实收', SALES_RETURN_IDENTIFY: '退货批次核实转待检',
   QUALITY_HOLD: '质检更正暂停', QUALITY_RELEASE: '主管取消预占', PUTAWAY_REVERSE: '撤销上架', SALES_UNPICK: '撤拣直接退待检', INSPECTION_WITHDRAW: '撤销质检判定', QUALITY_REINSPECT: '更正后重新全检',
   RECEIVE: '入库', RESERVE: '预占', RELEASE: '释放预占', DEDUCT: '出库', STOCK_ADJUST: '调整', SALES_PICK: '实拣转发货暂存',
@@ -182,7 +183,7 @@ function InventoryLedger() {
               ? <Link href={`/wms/operations?reviewId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>
               : item.referenceType === 'SALES_SHIPMENT' && item.referenceId
               ? <Link href={`/wms/inventory?tab=shipments&packageId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>
-              : item.referenceType === 'SALES_BATCH_PICK' && item.referenceId
+              : ['SALES_BATCH_PICK', 'FBA_BATCH_PICK', 'FBA_SHIPMENT'].includes(item.referenceType ?? '') && item.referenceId
               ? <Link href={`/wms/operations?outboundId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>
               : item.transactionType === 'PURCHASE_SUPPLIER_RETURN' && item.referenceId
               ? <Link href={`/wms/operations?returnId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>

@@ -31,16 +31,20 @@ public class SalesPickingController {
                 || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
         boolean canPack = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_wms:carton:write")
                 || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
-        return Result.ok(new WorkList(canPick, canShip, canPack, canPick || canShip || canPack ? service.list(user.tenantId(), salesOrderId) : List.of()));
+        boolean canFba = fbaReader(auth);
+        List<Work> work = canPick || canShip || canPack || canFba ? service.list(user.tenantId(), salesOrderId) : List.of();
+        if (!canPick && !canShip && !canPack) work = work.stream().filter(w -> w.sourceType().equals("FBA_SHIPMENT")).toList();
+        return Result.ok(new WorkList(canPick, canShip, canPack, canFba, work));
     }
     @GetMapping("/{outboundId}")
     public Result<Work> get(@PathVariable UUID outboundId, Authentication auth) {
         var user = current(auth);
-        if (auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_" + WRITE)
-                || a.getAuthority().equals("ROLE_wms:ship:write") || a.getAuthority().equals("ROLE_wms:carton:write") || a.getAuthority().equals("ROLE_SUPER_ADMIN"))) {
-            throw new AccessDeniedException("当前账号没有查看拣货作业的权限");
-        }
-        return Result.ok(service.get(user.tenantId(), outboundId.toString()));
+        boolean normalRead = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_" + WRITE)
+                || a.getAuthority().equals("ROLE_wms:ship:write") || a.getAuthority().equals("ROLE_wms:carton:write") || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
+        if (!normalRead && !fbaReader(auth)) throw new AccessDeniedException("当前账号没有查看拣货作业的权限");
+        var work = service.get(user.tenantId(), outboundId.toString());
+        if (!normalRead && !work.sourceType().equals("FBA_SHIPMENT")) throw new AccessDeniedException("当前账号没有查看销售拣货作业的权限");
+        return Result.ok(work);
     }
     @PostMapping("/{outboundId}/reallocate")
     @RequirePermission(WRITE)
@@ -61,7 +65,10 @@ public class SalesPickingController {
                 || !user.tenantId().equals(TenantContext.getTenantId())) throw new AccessDeniedException("请使用当前租户的登录账号");
         return user;
     }
-    public record WorkList(boolean canPick, boolean canShip, boolean canPack, List<Work> orders) {}
+    private boolean fbaReader(Authentication auth) {
+        return auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_wms:fba-bind:write") || a.getAuthority().equals("ROLE_wms:fba-ship:write"));
+    }
+    public record WorkList(boolean canPick, boolean canShip, boolean canPack, boolean canFba, List<Work> orders) {}
     public record PickRequest(@NotNull UUID requestId, @NotNull UUID allocationId,
                               @NotBlank @Size(max = 128) String locationCode, @NotNull UUID batchNo, @Positive int quantity) {}
 }

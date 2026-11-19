@@ -237,7 +237,11 @@ public class FbaShipmentService {
         return shipment;
     }
 
+    @Transactional
     public FbaShipment submit(String tenantId, String fbaShipmentId) {
+        if (warehouseMapper.lockShipment(tenantId, fbaShipmentId) == null) {
+            throw new BizException("FBA_SHIPMENT_NOT_FOUND", "FBA 备货单不存在");
+        }
         FbaShipment shipment = getShipment(tenantId, fbaShipmentId);
         if (shipment.status() != FbaShipmentStatus.DRAFT) {
             throw new BizException("FBA_SHIPMENT_STATUS_INVALID", "Only draft shipment can be submitted");

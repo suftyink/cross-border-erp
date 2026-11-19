@@ -88,6 +88,7 @@ public record InventoryTransaction(
         PURCHASE_SUPPLIER_RETURN,
         SALES_PICK,
         SALES_SHIP,
+        FBA_SHIP,
         SHORT_PICK_REPORT,
         SHORT_PICK_REPLACE,
         STOCK_REVIEW,

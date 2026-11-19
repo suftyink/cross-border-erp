@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.fba.infrastructure.mapper.FbaBoxLabelMapper">
+    <select id="find" resultType="com.aidotnet.erp.fba.infrastructure.mapper.FbaBoxLabelMapper$Registration">
+        SELECT fba_shipment_id, amazon_shipment_id, carton_count, registered_by, registered_at
+        FROM fba_box_label_plan WHERE tenant_id = #{tenant} AND fba_shipment_id = #{shipment}
+    </select>
+    <select id="numbers" resultType="string">
+        SELECT box_number FROM fba_registered_box WHERE tenant_id = #{tenant} AND fba_shipment_id = #{shipment} ORDER BY box_number
+    </select>
+    <insert id="insert">
+        INSERT INTO fba_box_label_plan(tenant_id, fba_shipment_id, amazon_shipment_id, carton_count, registered_by, registered_at)
+        VALUES (#{tenant}, #{r.fbaShipmentId}, #{r.amazonShipmentId}, #{r.cartonCount}, #{r.registeredBy}, #{r.registeredAt}) ON CONFLICT DO NOTHING
+    </insert>
+    <insert id="insertNumber">
+        INSERT INTO fba_registered_box(tenant_id, box_number, fba_shipment_id) VALUES (#{tenant}, #{number}, #{shipment}) ON CONFLICT DO NOTHING
+    </insert>
+    <update id="updateShipment">
+        UPDATE fba_shipment SET amazon_shipment_id = #{amazon}, carton_count = #{count}, updated_at = CURRENT_TIMESTAMP
+        WHERE tenant_id = #{tenant} AND fba_shipment_id = #{shipment}
+    </update>
+</mapper>
