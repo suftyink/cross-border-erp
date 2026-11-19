@@ -8,6 +8,7 @@ import { login } from '@/lib/api/auth';
 import { useAuthStore } from '@/lib/store';
 
 const { Title, Text } = Typography;
+const defaultTenantId = process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || 'default';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
@@ -41,9 +42,10 @@ export default function LoginPage() {
           <Title level={3} style={{ marginBottom: 4, color: '#0c2340' }}>跨境电商ERP</Title>
           <Text type="secondary">Cross-Border E-Commerce ERP</Text>
         </div>
-        <Form name="login" onFinish={onFinish} size="large" autoComplete="off" initialValues={{ tenantId: 'default' }}>
+        <Form name="login" onFinish={onFinish} size="large" autoComplete="off" initialValues={{ tenantId: defaultTenantId }}>
           <Form.Item name="tenantId" label="租户" rules={[{ required: true, message: '请选择租户' }]}>
             <Select options={[
+              { value: 'local', label: '本地租户' },
               { value: 'default', label: '默认租户' },
               { value: 'tenant-001', label: '深圳运营中心' },
               { value: 'tenant-002', label: '义乌商贸中心' },
