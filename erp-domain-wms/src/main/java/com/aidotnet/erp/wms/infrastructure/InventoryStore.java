@@ -105,7 +105,8 @@ public class InventoryStore {
     public InventoryBalance saveBalance(InventoryBalance balance) {
         long located = locatedQuantity(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
         long batchReserved = inventoryMapper.selectBatchReserved(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
-        if (balance.getAvailable() < located || balance.reserved() < batchReserved) {
+        long batchReview = inventoryMapper.selectBatchReview(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
+        if (balance.getAvailable() < located || balance.reserved() < batchReserved || balance.frozen() < batchReview) {
             throw new BizException("BATCH_STOCK_OPERATION_REQUIRED", "已按库位管理的库存需要按实物批次办理");
         }
         inventoryMapper.ensureBalance(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
@@ -528,7 +529,7 @@ public class InventoryStore {
                 d.getReserved() != null ? d.getReserved() : 0,
                 d.getInTransit() != null ? d.getInTransit() : 0,
                 d.getFrozen() != null ? d.getFrozen() : 0,
-                d.getUpdatedAt(), d.getPendingInspection(), d.getPendingPutaway(), d.getQuarantined());
+                d.getUpdatedAt(), d.getPendingInspection(), d.getPendingPutaway(), d.getQuarantined(), d.getPendingReview());
     }
 
     private WarehouseLocationDO toLocationData(WarehouseLocation l) {
@@ -651,6 +652,7 @@ public class InventoryStore {
         data.setBeforePendingPutaway(transaction.beforePendingPutaway());
         data.setAfterPendingPutaway(transaction.afterPendingPutaway());
         data.setAvailableDelta(transaction.availableDelta());
+        data.setPendingReviewDelta(transaction.pendingReviewDelta());
         return data;
     }
 
@@ -673,6 +675,6 @@ public class InventoryStore {
                 data.getPendingPutawayDelta(), data.getQuarantinedDelta(),
                 data.getSourceLocationId(), data.getTargetLocationId(), data.getBeforeLocationQuantity(),
                 data.getAfterLocationQuantity(), data.getBeforePendingPutaway(), data.getAfterPendingPutaway(),
-                data.getAvailableDelta());
+                data.getAvailableDelta(), data.getPendingReviewDelta());
     }
 }

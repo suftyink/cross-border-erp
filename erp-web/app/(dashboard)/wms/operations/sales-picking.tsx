@@ -10,24 +10,25 @@ import { useAuthStore } from '@/lib/store';
 import type { Warehouse } from '@/types';
 import { newOperationId } from './operation-id';
 import { SalesDispatch } from './sales-dispatch';
+import { ShortPickWork } from './short-pick-work';
 
 interface Allocation {
   allocationId: string; lineId: string; salesLineId: string; sellerSku: string;
   locationId: string; locationCode: string; batchNo: string; receiptId: string; purchaseOrderId: string;
-  plannedQuantity: number; pickedQuantity: number;
+  plannedQuantity: number; pickedQuantity: number; shortQuantity: number;
 }
 interface ActualPick extends PickValues {
   requestId: string; allocationId: string; receiptId: string; purchaseOrderId: string;
   sellerSku: string; operatorId: string; createdAt: string;
 }
 interface Work {
-  outboundId: string; salesOrderId: string; warehouseId: string; status: string;
+  outboundId: string; salesOrderId: string; warehouseId: string; status: string; requiredQuantity: number; allowBatchSubstitution: boolean;
   allocations: Allocation[]; picks: ActualPick[];
 }
 type PickValues = { locationCode: string; batchNo: string; quantity: number };
 type Attempt = PickValues & { requestId: string; allocationId: string; outboundId: string };
 const endpoint = '/wms/api/in/v1/sales-picking';
-const labels: Record<string, string> = { RESERVED: '已预占待拣', PICKING: '拣货中', PICKED: '已拣齐待发货', PARTIALLY_SHIPPED: '部分已发货', SHIPPED: '已全部发货' };
+const labels: Record<string, string> = { RESERVED: '已预占待拣', PICKING: '拣货中', PICKED: '已拣齐待发货', SHORT_PICK: '缺拣待处理', PARTIALLY_SHIPPED: '部分已发货', SHIPPED: '已全部发货' };
 
 export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOrderId: string | null; outboundId: string | null; warehouses: Warehouse[] }) {
   const tenant = useAuthStore((s) => s.tenantId);
@@ -90,7 +91,7 @@ export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOr
         { title: '销售订单', render: (_, row) => <Link href={`/oms/orders?orderId=${encodeURIComponent(row.salesOrderId)}`}>{row.salesOrderId}</Link> },
         { title: '仓库', render: (_, row) => warehouses.find((w) => w.warehouseId === row.warehouseId)?.name ?? row.warehouseId },
         { title: '状态', render: (_, row) => <Tag>{labels[row.status] ?? row.status}</Tag> },
-        { title: '计划 / 已拣', render: (_, row) => `${row.allocations.reduce((n, a) => n + a.plannedQuantity, 0)} / ${row.allocations.reduce((n, a) => n + a.pickedQuantity, 0)}` },
+        { title: '应拣 / 已拣', render: (_, row) => `${row.requiredQuantity} / ${row.allocations.reduce((n, a) => n + a.pickedQuantity, 0)}` },
         { title: '操作', render: (_, row) => <Button onClick={() => setSelectedId(row.outboundId)}>查看拣货作业</Button> },
       ]} />
     </Card>}
@@ -105,9 +106,10 @@ export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOr
         { title: '订单行', dataIndex: 'salesLineId' }, { title: 'SKU', dataIndex: 'sellerSku' },
         { title: '计划库位', dataIndex: 'locationCode' }, { title: '计划批次', dataIndex: 'batchNo' },
         { title: '计划', dataIndex: 'plannedQuantity' }, { title: '已拣', dataIndex: 'pickedQuantity' },
-        { title: '待拣', render: (_, row) => row.plannedQuantity - row.pickedQuantity },
+        { title: '缺拣', dataIndex: 'shortQuantity' },
+        { title: '待拣', render: (_, row) => row.plannedQuantity - row.pickedQuantity - row.shortQuantity },
         { title: '采购来源', render: (_, row) => <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(row.purchaseOrderId)}&batchNo=${encodeURIComponent(row.batchNo)}`}>来源收货批次</Link> },
-        { title: '操作', render: (_, row) => <Button disabled={!work.data?.canPick || !!pending || row.pickedQuantity === row.plannedQuantity}
+        { title: '操作', render: (_, row) => <Button disabled={!work.data?.canPick || !!pending || row.pickedQuantity + row.shortQuantity === row.plannedQuantity}
           onClick={() => { setAllocation(row); setError(undefined); }}>登记实拣</Button> },
       ]} />
       <Typography.Title level={5}>实际拣货记录</Typography.Title>
@@ -119,6 +121,7 @@ export function SalesPicking({ salesOrderId, outboundId, warehouses }: { salesOr
         { title: '来源', render: (_, row) => <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(row.purchaseOrderId)}&batchNo=${encodeURIComponent(row.batchNo)}`}>采购收货批次</Link> },
       ]} />
     </Card>}
+    {selected && <ShortPickWork key={`review-${selected.outboundId}`} source={selected} />}
     {selected && <SalesDispatch key={selected.outboundId} outboundId={selected.outboundId} picks={selected.picks}
       canShip={!!work.data?.canShip} onChange={() => work.mutate()} />}
     {selected && allocation && <PickDialog allocation={allocation} saving={saving} pending={pending} error={error}
@@ -133,7 +136,7 @@ function PickDialog({ allocation, saving, pending, error, onClose, onSubmit }: {
   onClose: () => void; onSubmit: (values: PickValues) => void;
 }) {
   const [form] = Form.useForm<PickValues>();
-  const remaining = allocation.plannedQuantity - allocation.pickedQuantity;
+  const remaining = allocation.plannedQuantity - allocation.pickedQuantity - allocation.shortQuantity;
   return <Modal open title="登记实际拣货" onCancel={onClose} maskClosable={false} closable={!saving} keyboard={!saving}
     cancelButtonProps={{ disabled: saving }} confirmLoading={saving} okText={pending ? '重试原实拣' : '确认实拣'}
     onOk={() => pending ? onSubmit(pending) : form.submit()}>

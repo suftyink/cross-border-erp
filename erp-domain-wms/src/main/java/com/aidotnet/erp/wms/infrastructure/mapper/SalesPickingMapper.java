@@ -16,7 +16,9 @@ public interface SalesPickingMapper {
     List<String> list(@Param("tenantId") String tenantId, @Param("salesOrderId") String salesOrderId);
     String lockWork(@Param("tenantId") String tenantId, @Param("outboundId") String outboundId);
     void insertWork(@Param("tenantId") String tenantId, @Param("outboundId") String outboundId,
-                    @Param("salesOrderId") String salesOrderId, @Param("operatorId") String operatorId);
+                    @Param("salesOrderId") String salesOrderId, @Param("operatorId") String operatorId,
+                    @Param("allowBatchSubstitution") boolean allowBatchSubstitution);
+    boolean allowBatchSubstitution(@Param("tenantId") String tenantId, @Param("outboundId") String outboundId);
     List<BatchStock> candidates(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
                                 @Param("sellerSku") String sellerSku);
     int reserve(@Param("tenantId") String tenantId, @Param("stock") BatchStock stock, @Param("quantity") int quantity);

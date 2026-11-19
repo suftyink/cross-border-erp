@@ -32,6 +32,9 @@ public class InventoryTransactionDO {
     private Integer beforePendingPutaway;
     private Integer afterPendingPutaway;
     private Integer availableDelta;
+    private Integer pendingReviewDelta;
+    public Integer getPendingReviewDelta() { return pendingReviewDelta; }
+    public void setPendingReviewDelta(Integer value) { pendingReviewDelta = value; }
 
     public String getSourceLocationId() { return sourceLocationId; }
     public void setSourceLocationId(String value) { sourceLocationId = value; }

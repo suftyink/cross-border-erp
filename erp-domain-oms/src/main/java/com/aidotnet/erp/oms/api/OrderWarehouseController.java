@@ -31,8 +31,9 @@ public class OrderWarehouseController {
     public Result<SalesOrderPicking.Work> dispatch(@PathVariable String orderId, @Valid @RequestBody Request request, Authentication auth) {
         if (auth == null || !(auth.getDetails() instanceof ErpUserDetails user)
                 || !user.tenantId().equals(TenantContext.getTenantId())) throw new AccessDeniedException("请使用当前租户的登录账号");
-        return Result.ok(service.dispatch(user.tenantId(), orderId, request.warehouseId(), user.userId()));
+        return Result.ok(service.dispatch(user.tenantId(), orderId, request.warehouseId(), user.userId(),
+                Boolean.TRUE.equals(request.allowBatchSubstitution())));
     }
-    public record Request(@NotBlank @Size(max = 64) String warehouseId) {}
+    public record Request(@NotBlank @Size(max = 64) String warehouseId, Boolean allowBatchSubstitution) {}
     public record Access(boolean canDispatch) {}
 }

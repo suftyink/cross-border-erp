@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Alert, Button, Form, Modal, Select, Space, Typography } from 'antd';
+import { Alert, Button, Checkbox, Form, Modal, Select, Space, Typography } from 'antd';
 import { isAxiosError } from 'axios';
 import Link from 'next/link';
 import { post } from '@/lib/api/client';
@@ -17,14 +17,14 @@ export function WarehouseDispatch({ orderId, paid }: { orderId: string; paid: bo
   const [uncertain, setUncertain] = useState(false);
   const [done, setDone] = useState(false);
   const busy = useRef(false);
-  const [form] = Form.useForm<{ warehouseId: string }>();
-  const submit = async ({ warehouseId }: { warehouseId: string }) => {
+  const [form] = Form.useForm<{ warehouseId: string; allowBatchSubstitution: boolean }>();
+  const submit = async ({ warehouseId, allowBatchSubstitution }: { warehouseId: string; allowBatchSubstitution: boolean }) => {
     if (busy.current) return;
     busy.current = true;
     setSaving(true);
     setError(undefined);
     try {
-      await post(`/oms/api/in/v1/orders/${encodeURIComponent(orderId)}/warehouse-work`, { warehouseId });
+      await post(`/oms/api/in/v1/orders/${encodeURIComponent(orderId)}/warehouse-work`, { warehouseId, allowBatchSubstitution });
       setDone(true);
       setUncertain(false);
     } catch (failure) {
@@ -45,10 +45,13 @@ export function WarehouseDispatch({ orderId, paid }: { orderId: string; paid: bo
         {error && <Alert type="error" showIcon message={error} />}
         {done && <Alert type="success" showIcon message="已下发并完成批次预占"
           action={<Link href={`/wms/operations?salesOrderId=${encodeURIComponent(orderId)}`}>前往拣货作业</Link>} />}
-        <Form form={form} layout="vertical" onFinish={submit}>
+        <Form form={form} layout="vertical" onFinish={submit} initialValues={{ allowBatchSubstitution: false }}>
           <Form.Item name="warehouseId" label="出库仓库" rules={[{ required: true, message: '请选择出库仓库' }]}>
             <Select aria-label="出库仓库" disabled={saving || uncertain || done} loading={warehouses.isLoading}
               options={(warehouses.data ?? []).map((w) => ({ label: `${w.code} · ${w.name}`, value: w.warehouseId }))} />
+          </Form.Item>
+          <Form.Item name="allowBatchSubstitution" valuePropName="checked">
+            <Checkbox disabled={saving || uncertain || done}>允许同库位同 SKU 换批</Checkbox>
           </Form.Item>
         </Form>
       </Space>

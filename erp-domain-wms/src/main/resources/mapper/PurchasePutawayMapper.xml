@@ -37,7 +37,7 @@
                 UNION ALL
                 SELECT b.location_id, COALESCE(p.location_code, p.barcode),
                        CASE WHEN p.purpose = 'QUARANTINE' THEN 'QUARANTINED' ELSE 'AVAILABLE' END,
-                       b.quantity - b.reserved_quantity
+                       b.quantity - b.reserved_quantity - b.review_quantity
                 FROM wms_batch_location_balance b
                 JOIN wms_warehouse_location p ON p.location_id = b.location_id AND p.tenant_id = b.tenant_id
                 WHERE b.tenant_id = o.tenant_id AND b.batch_no = l.batch_no
@@ -49,6 +49,11 @@
                 WHERE b.tenant_id = o.tenant_id AND b.batch_no = l.batch_no
                 UNION ALL
                 SELECT b.location_id, COALESCE(p.location_code, p.barcode), 'PICKED', b.picked_quantity
+                FROM wms_batch_location_balance b
+                JOIN wms_warehouse_location p ON p.tenant_id = b.tenant_id AND p.location_id = b.location_id
+                WHERE b.tenant_id = o.tenant_id AND b.batch_no = l.batch_no
+                UNION ALL
+                SELECT b.location_id, COALESCE(p.location_code, p.barcode), 'PENDING_REVIEW', b.review_quantity
                 FROM wms_batch_location_balance b
                 JOIN wms_warehouse_location p ON p.tenant_id = b.tenant_id AND p.location_id = b.location_id
                 WHERE b.tenant_id = o.tenant_id AND b.batch_no = l.batch_no

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.ShortPickMapper">
+    <select id="outbound" resultType="string">
+        SELECT outbound_id FROM wms_short_pick WHERE tenant_id = #{tenantId} AND short_pick_id = #{shortPickId}
+    </select>
+    <sql id="caseSelect">
+        SELECT s.short_pick_id, s.outbound_id, s.allocation_id, w.warehouse_id, a.seller_sku,
+               a.location_id, COALESCE(p.location_code, p.barcode) AS location_code, a.batch_no,
+               o.order_id AS receipt_id, o.reference_id AS purchase_order_id, s.short_quantity,
+               k.allow_batch_substitution, s.reason, s.reported_by, s.reported_at,
+               s.replacement_request_id, s.replacement_allocation_id, r.batch_no AS replacement_batch_no,
+               s.replaced_by, s.replaced_at, s.found_quantity, s.missing_quantity, s.counted_by, s.counted_at,
+               s.count_remark, s.confirmed_by, s.confirmed_at
+        FROM wms_short_pick s
+        JOIN wms_outbound_allocation a ON a.tenant_id = s.tenant_id AND a.allocation_id = s.allocation_id
+        JOIN wms_outbound_order w ON w.tenant_id = s.tenant_id AND w.order_id = s.outbound_id
+        JOIN wms_sales_pick_work k ON k.tenant_id = s.tenant_id AND k.outbound_id = s.outbound_id
+        JOIN wms_warehouse_location p ON p.tenant_id = a.tenant_id AND p.location_id = a.location_id
+        JOIN wms_inbound_order_line l ON l.tenant_id = a.tenant_id AND l.batch_no = a.batch_no
+        JOIN wms_inbound_order o ON o.tenant_id = l.tenant_id AND o.order_id = l.order_id
+        LEFT JOIN wms_outbound_allocation r ON r.tenant_id = s.tenant_id AND r.allocation_id = s.replacement_allocation_id
+    </sql>
+    <select id="find" resultType="com.aidotnet.erp.wms.domain.ShortPickCase">
+        <include refid="caseSelect"/> WHERE s.tenant_id = #{tenantId} AND s.short_pick_id = #{shortPickId}
+    </select>
+    <select id="list" resultType="com.aidotnet.erp.wms.domain.ShortPickCase">
+        <include refid="caseSelect"/> WHERE s.tenant_id = #{tenantId}
+        <if test="outboundId != null">AND s.outbound_id = #{outboundId}</if>
+        ORDER BY s.reported_at DESC, s.short_pick_id
+    </select>
+    <insert id="insert">
+        INSERT INTO wms_short_pick(tenant_id, short_pick_id, outbound_id, allocation_id, short_quantity,
+                                  reason, reported_by, reported_at)
+        VALUES (#{tenantId}, #{id}, #{outboundId}, #{allocationId}, #{quantity}, #{reason}, #{operatorId}, #{at})
+    </insert>
+    <update id="markAllocationShort">
+        UPDATE wms_outbound_allocation SET short_quantity = short_quantity + #{quantity}
+        WHERE tenant_id = #{tenantId} AND allocation_id = #{allocationId}
+          AND planned_quantity - picked_quantity - short_quantity &gt;= #{quantity}
+    </update>
+    <update id="freezeReview">
+        UPDATE wms_batch_location_balance
+        SET reserved_quantity = reserved_quantity - #{quantity}, review_quantity = review_quantity + #{quantity}
+        WHERE tenant_id = #{tenantId} AND batch_no = #{a.batchNo} AND location_id = #{a.locationId}
+          AND reserved_quantity - picked_quantity &gt;= #{quantity}
+    </update>
+    <update id="replace">
+        UPDATE wms_short_pick SET replacement_request_id = #{requestId}, replacement_allocation_id = #{allocationId},
+            replaced_by = #{operatorId}, replaced_at = #{at}
+        WHERE tenant_id = #{tenantId} AND short_pick_id = #{id}
+    </update>
+    <update id="count">
+        UPDATE wms_short_pick SET found_quantity = #{found}, missing_quantity = #{missing}, count_remark = #{remark},
+            counted_by = #{operatorId}, counted_at = #{at}
+        WHERE tenant_id = #{tenantId} AND short_pick_id = #{id}
+    </update>
+    <update id="resolveStock">
+        UPDATE wms_batch_location_balance SET quantity = quantity - #{c.missingQuantity},
+            review_quantity = review_quantity - #{c.shortQuantity}
+        WHERE tenant_id = #{tenantId} AND batch_no = #{c.batchNo} AND location_id = #{c.locationId}
+          AND review_quantity &gt;= #{c.shortQuantity} AND quantity - reserved_quantity &gt;= #{c.shortQuantity}
+    </update>
+    <update id="confirm">
+        UPDATE wms_short_pick SET confirmed_by = #{operatorId}, confirmed_at = #{at}
+        WHERE tenant_id = #{tenantId} AND short_pick_id = #{id}
+    </update>
+    <select id="physical" resultType="int">
+        SELECT quantity - picked_quantity FROM wms_batch_location_balance
+        WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo} AND location_id = #{locationId}
+    </select>
+</mapper>

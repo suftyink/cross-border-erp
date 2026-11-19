@@ -41,12 +41,13 @@ public class SalesPickingService implements SalesOrderPicking {
 
     @Override
     @Transactional
-    public Work dispatch(String tenantId, String salesOrderId, String warehouseId, String operatorId, List<Line> lines) {
+    public Work dispatch(String tenantId, String salesOrderId, String warehouseId, String operatorId, List<Line> lines,
+                         boolean allowBatchSubstitution) {
         String existing = picks.findBySalesOrder(tenantId, salesOrderId);
         if (existing != null) {
             Work work = get(tenantId, existing);
-            if (!warehouseId.equals(work.warehouseId())) {
-                throw new BizException("SALES_DISPATCH_CONFLICT", "订单已下发到其他仓库");
+            if (!warehouseId.equals(work.warehouseId()) || work.allowBatchSubstitution() != allowBatchSubstitution) {
+                throw new BizException("SALES_DISPATCH_CONFLICT", "订单已下发，不能修改仓库或换批约定");
             }
             return work;
         }
@@ -63,7 +64,7 @@ public class SalesPickingService implements SalesOrderPicking {
         Instant now = Instant.now();
         orders.saveOutboundOrder(new OutboundOrder(outboundId, tenantId, warehouseId, "SALES_BATCH_PICK",
                 salesOrderId, OutboundOrderStatus.PENDING, "销售订单批次拣货", now, now));
-        picks.insertWork(tenantId, outboundId, salesOrderId, operatorId);
+        picks.insertWork(tenantId, outboundId, salesOrderId, operatorId, allowBatchSubstitution);
         for (Line line : lines.stream().sorted(Comparator.comparing(Line::sellerSku).thenComparing(Line::lineId)).toList()) {
             String lineId = UUID.randomUUID().toString();
             orders.saveOutboundOrderLine(new OutboundOrderLine(lineId, outboundId, line.sellerSku(), null,
@@ -105,12 +106,17 @@ public class SalesPickingService implements SalesOrderPicking {
                 .filter(o -> "SALES_BATCH_PICK".equals(o.referenceType()))
                 .orElseThrow(() -> new BizException("SALES_PICK_NOT_FOUND", "销售拣货作业不存在"));
         List<Allocation> allocations = picks.allocations(tenantId, outboundId);
-        String status = allocations.stream().allMatch(a -> a.pickedQuantity() == a.plannedQuantity()) ? "PICKED"
+        var orderLines = orders.listOutboundOrderLines(outboundId);
+        int required = orderLines.stream().mapToInt(l -> l.requiredQuantity()).sum();
+        boolean pickedAll = orderLines.stream().allMatch(l -> l.pickedQuantity() == l.requiredQuantity());
+        String status = pickedAll ? "PICKED"
                 : allocations.stream().anyMatch(a -> a.pickedQuantity() > 0) ? "PICKING" : "RESERVED";
+        if (allocations.stream().mapToInt(a -> a.plannedQuantity() - a.shortQuantity()).sum() < required) status = "SHORT_PICK";
         if (order.status() == OutboundOrderStatus.SHIPPED) status = "SHIPPED";
         else if (orders.listOutboundPackages(tenantId, outboundId).stream()
                 .anyMatch(p -> p.status() == com.aidotnet.erp.wms.domain.OutboundPackageStatus.SHIPPED)) status = "PARTIALLY_SHIPPED";
         return new Work(outboundId, order.referenceId(), order.warehouseId(), status,
+                required, picks.allowBatchSubstitution(tenantId, outboundId),
                 allocations, picks.picks(tenantId, outboundId));
     }
 
@@ -138,7 +144,7 @@ public class SalesPickingService implements SalesOrderPicking {
                 || !locations.get(0).locationId().equals(a.locationId()) || !command.batchNo().equals(a.batchNo())) {
             throw new BizException("SALES_PICK_SCAN_INVALID", "库位或批次不符，请扫描计划明细对应的良品实物标签");
         }
-        if (command.quantity() <= 0 || command.quantity() > a.plannedQuantity() - a.pickedQuantity()) {
+        if (command.quantity() <= 0 || command.quantity() > a.plannedQuantity() - a.pickedQuantity() - a.shortQuantity()) {
             throw new BizException("SALES_PICK_QUANTITY_INVALID", "实拣数量必须大于零且不能超过当前明细待拣数量");
         }
         InventoryBalance balance = inventory.lockBalance(tenantId, work.warehouseId(), a.sellerSku()).orElseThrow();

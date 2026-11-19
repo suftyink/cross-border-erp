@@ -15,6 +15,7 @@ import { PurchasePutaway } from './purchase-putaway';
 import { PurchaseReturns, ReceiptReturnAction } from './purchase-returns';
 import { newOperationId } from './operation-id';
 import { SalesPicking } from './sales-picking';
+import { ShortPickWork } from './short-pick-work';
 
 const receiptsApi = '/wms/api/in/v1/purchase-receipts';
 type PendingReceipt = { orderId: string; request: PurchaseReceiptInput };
@@ -30,10 +31,11 @@ function ReceiptWork() {
   const returnId = search.get('returnId');
   const salesOrderId = search.get('salesOrderId');
   const outboundId = search.get('outboundId');
-  const [activeTab, setActiveTab] = useState(salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
+  const reviewId = search.get('reviewId');
+  const [activeTab, setActiveTab] = useState(reviewId ? 'reviews' : salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
   useEffect(() => {
-    setActiveTab(salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
-  }, [salesOrderId, outboundId, returnId, purchaseOrderId, sourceBatchNo]);
+    setActiveTab(reviewId ? 'reviews' : salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
+  }, [salesOrderId, outboundId, returnId, purchaseOrderId, sourceBatchNo, reviewId]);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder>();
   const [replacement, setReplacement] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<PurchaseReceipt>();
@@ -104,7 +106,9 @@ function ReceiptWork() {
       {pending && !selectedOrder && work.data?.canReceive && <Alert type="warning" showIcon
         message={`待确认收货 ${pending.request.receiptId}`}
         action={<Button loading={saving} onClick={() => void sendReceipt(pending)}>重试原确认</Button>} />}
-      <Tabs activeKey={activeTab} onChange={setActiveTab} items={[{ key: 'picking', label: '拣货与出库', children: (
+      <Tabs activeKey={activeTab} onChange={setActiveTab} items={[{ key: 'reviews', label: '缺拣复核', children: (
+        <ShortPickWork outboundId={outboundId} reviewId={reviewId} />
+      ) }, { key: 'picking', label: '拣货与出库', children: (
         <SalesPicking salesOrderId={salesOrderId} outboundId={outboundId} warehouses={warehouses ?? []} />
       ) }, { key: 'receiving', label: '收货', children: (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>

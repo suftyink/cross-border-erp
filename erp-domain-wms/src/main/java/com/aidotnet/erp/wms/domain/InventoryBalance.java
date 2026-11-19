@@ -24,7 +24,13 @@ import java.time.Instant;
  */
 public record InventoryBalance(String tenantId, String warehouseId, String sellerSku,
                                int onHand, int reserved, int inTransit, int frozen,
-                               Instant updatedAt, int pendingInspection, int pendingPutaway, int quarantined) {
+                               Instant updatedAt, int pendingInspection, int pendingPutaway, int quarantined, int pendingReview) {
+
+    public InventoryBalance(String tenantId, String warehouseId, String sellerSku, int onHand, int reserved,
+                            int inTransit, int frozen, Instant updatedAt, int pendingInspection, int pendingPutaway, int quarantined) {
+        this(tenantId, warehouseId, sellerSku, onHand, reserved, inTransit, frozen, updatedAt,
+                pendingInspection, pendingPutaway, quarantined, 0);
+    }
 
     public InventoryBalance(String tenantId, String warehouseId, String sellerSku, int onHand, int reserved,
                             int inTransit, int frozen, Instant updatedAt) {
@@ -32,7 +38,7 @@ public record InventoryBalance(String tenantId, String warehouseId, String selle
     }
 
     public int legacyFrozenQuantity() {
-        return frozen - pendingInspection - pendingPutaway - quarantined;
+        return frozen - pendingInspection - pendingPutaway - quarantined - pendingReview;
     }
 
     /** 计算可用库存 = 在手 - 预占 - 冻结 */

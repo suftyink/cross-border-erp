@@ -25,7 +25,8 @@ public class OrderWarehouseService {
     }
 
     @Transactional
-    public SalesOrderPicking.Work dispatch(String tenantId, String orderId, String warehouseId, String operatorId) {
+    public SalesOrderPicking.Work dispatch(String tenantId, String orderId, String warehouseId, String operatorId,
+                                            boolean allowBatchSubstitution) {
         orders.lock(tenantId, orderId);
         SalesOrder order = orders.find(tenantId, orderId)
                 .orElseThrow(() -> new BizException("ORDER_NOT_FOUND", "销售订单不存在"));
@@ -40,7 +41,7 @@ public class OrderWarehouseService {
             throw new BizException("ORDER_LINES_INVALID", "订单明细需要唯一行号、SKU 和正数数量");
         }
         return picking.dispatch(tenantId, orderId, warehouseId, operatorId, order.lines().stream()
-                .map(l -> new SalesOrderPicking.Line(l.lineId(), l.sellerSku(), l.quantity())).toList());
+                .map(l -> new SalesOrderPicking.Line(l.lineId(), l.sellerSku(), l.quantity())).toList(), allowBatchSubstitution);
     }
 
     @Transactional

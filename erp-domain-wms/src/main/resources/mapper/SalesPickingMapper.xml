@@ -14,13 +14,16 @@
         WHERE tenant_id = #{tenantId} AND outbound_id = #{outboundId} FOR UPDATE
     </select>
     <insert id="insertWork">
-        INSERT INTO wms_sales_pick_work(tenant_id, outbound_id, sales_order_id, operator_id)
-        VALUES (#{tenantId}, #{outboundId}, #{salesOrderId}, #{operatorId})
+        INSERT INTO wms_sales_pick_work(tenant_id, outbound_id, sales_order_id, operator_id, allow_batch_substitution)
+        VALUES (#{tenantId}, #{outboundId}, #{salesOrderId}, #{operatorId}, #{allowBatchSubstitution})
     </insert>
+    <select id="allowBatchSubstitution" resultType="boolean">
+        SELECT allow_batch_substitution FROM wms_sales_pick_work WHERE tenant_id = #{tenantId} AND outbound_id = #{outboundId}
+    </select>
     <select id="candidates" resultType="com.aidotnet.erp.wms.domain.BatchStock">
         SELECT b.batch_no, o.order_id, o.reference_id, b.warehouse_id, b.seller_sku, l.supplier_batch_no,
                o.created_at, b.location_id, COALESCE(p.location_code, p.barcode) AS location_code, 'AVAILABLE' AS status,
-               b.quantity - b.reserved_quantity AS quantity
+               b.quantity - b.reserved_quantity - b.review_quantity AS quantity
         FROM wms_batch_location_balance b
         JOIN wms_warehouse_location p ON p.tenant_id = b.tenant_id AND p.location_id = b.location_id
         JOIN wms_inbound_order_line l ON l.tenant_id = b.tenant_id AND l.batch_no = b.batch_no
@@ -29,14 +32,14 @@
         WHERE b.tenant_id = #{tenantId} AND b.warehouse_id = #{warehouseId} AND b.seller_sku = #{sellerSku}
           AND p.warehouse_id = b.warehouse_id AND p.enabled AND p.purpose = 'GOOD'
           AND o.reference_type = 'PURCHASE_RECEIPT' AND o.status = 'COMPLETED' AND i.disposed_at IS NOT NULL
-          AND b.quantity > b.reserved_quantity
+          AND b.quantity - b.reserved_quantity > b.review_quantity
         ORDER BY o.created_at, b.batch_no, COALESCE(p.location_code, p.barcode), b.location_id
     </select>
     <update id="reserve">
         UPDATE wms_batch_location_balance SET reserved_quantity = reserved_quantity + #{quantity}
         WHERE tenant_id = #{tenantId} AND warehouse_id = #{stock.warehouseId}
           AND batch_no = #{stock.batchNo} AND location_id = #{stock.locationId}
-          AND quantity - reserved_quantity &gt;= #{quantity}
+          AND quantity - reserved_quantity - review_quantity &gt;= #{quantity}
     </update>
     <insert id="insertAllocation">
         INSERT INTO wms_outbound_allocation(tenant_id, allocation_id, outbound_id, line_id, sales_line_id,
@@ -53,7 +56,7 @@
     <select id="allocations" resultType="com.aidotnet.erp.common.wms.SalesOrderPicking$Allocation">
         SELECT a.allocation_id, a.outbound_id, a.line_id, a.sales_line_id, a.seller_sku, a.location_id,
                COALESCE(p.location_code, p.barcode) AS location_code, a.batch_no, o.order_id, o.reference_id,
-               a.planned_quantity, a.picked_quantity
+               a.planned_quantity, a.picked_quantity, a.short_quantity
         <include refid="allocationJoins"/>
         WHERE a.tenant_id = #{tenantId} AND a.outbound_id = #{outboundId}
         ORDER BY a.sales_line_id, o.created_at, a.batch_no, COALESCE(p.location_code, p.barcode), a.allocation_id

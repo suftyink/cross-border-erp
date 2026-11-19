@@ -36,8 +36,22 @@ public record InventoryTransaction(
         Integer afterLocationQuantity,
         Integer beforePendingPutaway,
         Integer afterPendingPutaway,
-        Integer availableDelta
+        Integer availableDelta,
+        Integer pendingReviewDelta
 ) {
+    public InventoryTransaction(String transactionId, String tenantId, String warehouseId, String sellerSku,
+                                TransactionType transactionType, int quantity, int beforeOnHand, int beforeReserved,
+                                int afterOnHand, int afterReserved, String referenceType, String referenceId,
+                                String remark, Instant createdAt, String batchNo, String operatorId,
+                                Integer pendingInspectionDelta, Integer pendingPutawayDelta, Integer quarantinedDelta,
+                                String sourceLocationId, String targetLocationId, Integer beforeLocationQuantity,
+                                Integer afterLocationQuantity, Integer beforePendingPutaway, Integer afterPendingPutaway,
+                                Integer availableDelta) {
+        this(transactionId, tenantId, warehouseId, sellerSku, transactionType, quantity, beforeOnHand, beforeReserved,
+                afterOnHand, afterReserved, referenceType, referenceId, remark, createdAt, batchNo, operatorId,
+                pendingInspectionDelta, pendingPutawayDelta, quarantinedDelta, sourceLocationId, targetLocationId,
+                beforeLocationQuantity, afterLocationQuantity, beforePendingPutaway, afterPendingPutaway, availableDelta, null);
+    }
     public InventoryTransaction(String transactionId, String tenantId, String warehouseId, String sellerSku,
                                 TransactionType transactionType, int quantity, int beforeOnHand, int beforeReserved,
                                 int afterOnHand, int afterReserved, String referenceType, String referenceId,
@@ -73,6 +87,9 @@ public record InventoryTransaction(
         PURCHASE_QUARANTINE,
         PURCHASE_SUPPLIER_RETURN,
         SALES_PICK,
-        SALES_SHIP
+        SALES_SHIP,
+        SHORT_PICK_REPORT,
+        SHORT_PICK_REPLACE,
+        STOCK_REVIEW
     }
 }
