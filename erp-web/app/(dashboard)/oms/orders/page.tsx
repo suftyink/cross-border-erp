@@ -1,17 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Table, Card, Typography, Tag, Space, Input, Select, DatePicker, Button, Badge, Descriptions, Modal, message, Tabs, Dropdown, Popconfirm, Form, InputNumber } from 'antd';
 import { SearchOutlined, EyeOutlined, SyncOutlined, ImportOutlined, DollarOutlined, CloseCircleOutlined, RollbackOutlined } from '@ant-design/icons';
-import { usePageApi } from '@/lib/hooks';
+import { useApi } from '@/lib/hooks';
+import { get } from '@/lib/api/client';
 import { omsApi } from '@/lib/api';
 import type { Order, PageParams } from '@/types';
+import { WarehouseDispatch } from './warehouse-dispatch';
+
+interface OrderResponse extends Omit<Order, 'items' | 'orderNo' | 'customerName'> {
+  platformOrderNo: string; buyerName: string;
+  lines: { lineId: string; sellerSku: string; title: string; quantity: number; unitPrice: number }[];
+}
+const displayOrder = (order: OrderResponse): Order => ({ ...order, orderNo: order.platformOrderNo,
+  customerName: order.buyerName, items: order.lines.map((line) => ({ itemId: line.lineId,
+    sellerSku: line.sellerSku, productName: line.title, quantity: line.quantity, unitPrice: line.unitPrice, currency: order.currency })) });
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
 const statusMap: Record<string, { color: string; text: string }> = {
   PENDING: { color: 'orange', text: '待审核' },
+  CREATED: { color: 'orange', text: '待付款' },
+  REVIEW_REQUIRED: { color: 'orange', text: '待风控审核' },
+  REVIEW_REJECTED: { color: 'red', text: '审核拒绝' },
   CONFIRMED: { color: 'blue', text: '已确认' },
   PAID: { color: 'geekblue', text: '已付款' },
   SHIPPED: { color: 'cyan', text: '已发货' },
@@ -29,12 +42,21 @@ export default function OrdersPage() {
   const [refundOrderId, setRefundOrderId] = useState<string>('');
   const [syncForm] = Form.useForm();
   const [refundForm] = Form.useForm();
-  const { data, mutate } = usePageApi<Order>('/oms/api/in/v1/orders', params);
+  const { data: orders, mutate, isLoading, error } = useApi<OrderResponse[]>('/oms/api/in/v1/orders');
+  useEffect(() => {
+    const orderId = new URLSearchParams(window.location.search).get('orderId');
+    if (orderId) setParams((p) => ({ ...p, orderId }));
+  }, []);
+  const filtered = (orders ?? []).map(displayOrder).filter((order) =>
+    (!params.orderId || order.orderId === params.orderId)
+    && (!params.keyword || `${order.orderNo} ${order.customerName}`.toLowerCase().includes(String(params.keyword).toLowerCase()))
+    && (!params.platform || order.platform.toUpperCase() === params.platform)
+    && (!params.status || order.status === params.status));
 
   const showDetail = async (orderId: string) => {
     try {
-      const order = await omsApi.getOrder(orderId);
-      setCurrentOrder(order);
+      const order = await get<OrderResponse>(`/oms/api/in/v1/orders/${encodeURIComponent(orderId)}`);
+      setCurrentOrder(displayOrder(order));
       setDetailOpen(true);
     } catch { message.error('获取订单详情失败'); }
   };
@@ -90,7 +112,7 @@ export default function OrdersPage() {
     { title: '操作', key: 'action', width: 200, render: (_: unknown, record: Order) => (
       <Space size="small">
         <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => showDetail(record.orderId)}>详情</Button>
-        {record.status === 'PENDING' && (
+        {record.status === 'CREATED' && (
           <Button type="link" size="small" icon={<DollarOutlined />} onClick={() => handleMarkPaid(record.orderId)}>确认付款</Button>
         )}
         {record.status === 'PENDING' && (
@@ -104,6 +126,7 @@ export default function OrdersPage() {
         <Button type="link" size="small" onClick={() => {
           window.location.href = `/pdm/products?keyword=${record.items?.[0]?.sellerSku}`;
         }}>查看商品</Button>
+        <WarehouseDispatch orderId={record.orderId} paid={record.status === 'PAID'} />
       </Space>
     )},
   ];
@@ -128,12 +151,14 @@ export default function OrdersPage() {
         <Table
           rowKey="orderId"
           columns={columns}
-          dataSource={data?.list || []}
+          loading={isLoading}
+          locale={error ? { emptyText: '订单加载失败，请刷新页面重试' } : undefined}
+          dataSource={filtered.slice(((params.page ?? 1) - 1) * (params.size ?? 20), (params.page ?? 1) * (params.size ?? 20))}
           scroll={{ x: 1200 }}
           pagination={{
             current: params.page,
             pageSize: params.size,
-            total: data?.total || 0,
+            total: filtered.length,
             onChange: (page, size) => setParams({ ...params, page, size }),
             showSizeChanger: true,
             showTotal: (total) => `共 ${total} 条`,
@@ -164,7 +189,7 @@ export default function OrdersPage() {
               label: '商品明细',
               children: (
                 <Table
-                  rowKey="orderItemId"
+                  rowKey="itemId"
                   dataSource={currentOrder.items || []}
                   size="small"
                   pagination={false}
@@ -172,7 +197,7 @@ export default function OrdersPage() {
                     { title: '商品ID', dataIndex: 'productId', key: 'productId', render: (v: string) => (
                       <a href={`/pdm/products?productId=${v}`}>{v}</a>
                     )},
-                    { title: 'SKU', dataIndex: 'sku', key: 'sku' },
+                    { title: 'SKU', dataIndex: 'sellerSku', key: 'sku' },
                     { title: '商品名', dataIndex: 'productName', key: 'productName' },
                     { title: '数量', dataIndex: 'quantity', key: 'quantity' },
                     { title: '单价', dataIndex: 'unitPrice', key: 'unitPrice', render: (v: number) => `$${v?.toFixed(2)}` },

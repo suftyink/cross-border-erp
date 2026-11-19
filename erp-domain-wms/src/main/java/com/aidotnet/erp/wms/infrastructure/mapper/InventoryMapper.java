@@ -50,6 +50,9 @@ public interface InventoryMapper {
     long selectLocatedQuantity(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
                                @Param("sellerSku") String sellerSku);
 
+    long selectBatchReserved(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
+                             @Param("sellerSku") String sellerSku);
+
     boolean hasBatchLocations(@Param("tenantId") String tenantId, @Param("warehouseId") String warehouseId,
                               @Param("sellerSku") String sellerSku);
 

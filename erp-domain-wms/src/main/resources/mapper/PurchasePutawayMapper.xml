@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.PurchasePutawayMapper">
     <select id="locationQuantity" resultType="java.lang.Integer">
-        SELECT quantity FROM wms_batch_location_balance
+        SELECT quantity - picked_quantity FROM wms_batch_location_balance
         WHERE tenant_id = #{tenantId} AND batch_no = #{batchNo} AND location_id = #{locationId}
     </select>
 
@@ -36,9 +36,21 @@
                 WHERE i.disposed_at IS NOT NULL
                 UNION ALL
                 SELECT b.location_id, COALESCE(p.location_code, p.barcode),
-                       CASE WHEN p.purpose = 'QUARANTINE' THEN 'QUARANTINED' ELSE 'AVAILABLE' END, b.quantity
+                       CASE WHEN p.purpose = 'QUARANTINE' THEN 'QUARANTINED' ELSE 'AVAILABLE' END,
+                       b.quantity - b.reserved_quantity
                 FROM wms_batch_location_balance b
                 JOIN wms_warehouse_location p ON p.location_id = b.location_id AND p.tenant_id = b.tenant_id
+                WHERE b.tenant_id = o.tenant_id AND b.batch_no = l.batch_no
+                UNION ALL
+                SELECT b.location_id, COALESCE(p.location_code, p.barcode), 'RESERVED',
+                       b.reserved_quantity - b.picked_quantity
+                FROM wms_batch_location_balance b
+                JOIN wms_warehouse_location p ON p.tenant_id = b.tenant_id AND p.location_id = b.location_id
+                WHERE b.tenant_id = o.tenant_id AND b.batch_no = l.batch_no
+                UNION ALL
+                SELECT b.location_id, COALESCE(p.location_code, p.barcode), 'PICKED', b.picked_quantity
+                FROM wms_batch_location_balance b
+                JOIN wms_warehouse_location p ON p.tenant_id = b.tenant_id AND p.location_id = b.location_id
                 WHERE b.tenant_id = o.tenant_id AND b.batch_no = l.batch_no
             </if>
         ) s

@@ -45,6 +45,8 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.wms.SalesOrderPicking;
 
 /**
  * 订单管理应用服务
@@ -93,6 +95,7 @@ public class OrderService {
     private final WmsClient wmsClient;
     private final FmsClient fmsClient;
     private final TmsClient tmsClient;
+    private final SalesOrderPicking warehousePicking;
 
     public OrderService(OrderStore orderStore,
                         FulfillmentPlanStore fulfillmentPlanStore,
@@ -100,7 +103,8 @@ public class OrderService {
                         DomainEventPublisher eventPublisher,
                         WmsClient wmsClient,
                         FmsClient fmsClient,
-                        TmsClient tmsClient) {
+                        TmsClient tmsClient,
+                        SalesOrderPicking warehousePicking) {
         this.orderStore = orderStore;
         this.fulfillmentPlanStore = fulfillmentPlanStore;
         this.platformShipmentSyncLogStore = platformShipmentSyncLogStore;
@@ -108,6 +112,7 @@ public class OrderService {
         this.wmsClient = wmsClient;
         this.fmsClient = fmsClient;
         this.tmsClient = tmsClient;
+        this.warehousePicking = warehousePicking;
     }
 
     public SalesOrder importOrder(String tenantId, ImportOrderCommand command) {
@@ -187,7 +192,9 @@ public class OrderService {
         return paid;
     }
 
+    @Transactional
     public SalesOrder cancel(String tenantId, String orderId) {
+        ensureNoWarehouseWork(tenantId, orderId);
         SalesOrder order = getOrder(tenantId, orderId);
         if (order.status() == OrderStatus.SHIPPED || order.status() == OrderStatus.DELIVERED) {
             throw new BizException("ORDER_STATUS_INVALID", "Shipped or delivered orders cannot be cancelled");
@@ -224,7 +231,9 @@ public class OrderService {
         return rejected;
     }
 
+    @Transactional
     public OrderFulfillmentPlan generateFulfillmentPlan(String tenantId, String orderId) {
+        ensureNoWarehouseWork(tenantId, orderId);
         SalesOrder order = getOrder(tenantId, orderId);
         ensureOrderCanPlanFulfillment(order);
         OrderFulfillmentPlan existingPlan = fulfillmentPlanStore.findByOrderId(tenantId, orderId).orElse(null);
@@ -299,7 +308,9 @@ public class OrderService {
                 .orElseThrow(() -> new BizException("FULFILLMENT_PLAN_NOT_FOUND", "Fulfillment plan does not exist"));
     }
 
+    @Transactional
     public OrderFulfillmentPlan splitOrder(String tenantId, String orderId, SplitOrderCommand command) {
+        ensureNoWarehouseWork(tenantId, orderId);
         SalesOrder order = getOrder(tenantId, orderId);
         ensureOrderCanPlanFulfillment(order);
         validateSplitOrderCommand(command);
@@ -332,7 +343,9 @@ public class OrderService {
         return plan;
     }
 
+    @Transactional
     public OrderFulfillmentPlan mergePackages(String tenantId, String orderId, MergePackagesCommand command) {
+        ensureNoWarehouseWork(tenantId, orderId);
         SalesOrder order = getOrder(tenantId, orderId);
         ensureOrderCanPlanFulfillment(order);
         List<String> targetPackageIds = normalizeMergePackageIds(command);
@@ -380,7 +393,9 @@ public class OrderService {
         return plan;
     }
 
+    @Transactional
     public OrderFulfillmentPlan allocateFulfillmentPlan(String tenantId, String orderId) {
+        ensureNoWarehouseWork(tenantId, orderId);
         SalesOrder order = getOrder(tenantId, orderId);
         ensureOrderCanPlanFulfillment(order);
         OrderFulfillmentPlan currentPlan = getCurrentFulfillmentPlan(tenantId, orderId);
@@ -443,7 +458,9 @@ public class OrderService {
         return plan;
     }
 
+    @Transactional
     public SalesOrder ship(String tenantId, String orderId) {
+        ensureNoWarehouseWork(tenantId, orderId);
         SalesOrder order = getOrder(tenantId, orderId);
         if (order.status() != OrderStatus.PAID) {
             throw new BizException("ORDER_STATUS_INVALID", "Only paid orders can be shipped");
@@ -520,7 +537,9 @@ public class OrderService {
         return delivered;
     }
 
+    @Transactional
     public OrderRefund requestRefund(String tenantId, String orderId, String reason, BigDecimal refundAmount, OrderRefund.RefundType refundType) {
+        ensureNoWarehouseWork(tenantId, orderId);
         SalesOrder order = getOrder(tenantId, orderId);
         if (order.status() != OrderStatus.PAID && order.status() != OrderStatus.SHIPPED && order.status() != OrderStatus.DELIVERED) {
             throw new BizException("ORDER_STATUS_INVALID", "Order status does not allow refund requests");
@@ -590,8 +609,10 @@ public class OrderService {
         return rejected;
     }
 
+    @Transactional
     public OrderRefund completeRefund(String tenantId, String refundId) {
         OrderRefund refund = getRefund(tenantId, refundId);
+        ensureNoWarehouseWork(tenantId, refund.orderId());
         if (refund.status() != OrderRefund.RefundStatus.APPROVED) {
             throw new BizException("REFUND_STATUS_INVALID", "Only approved refunds can be completed");
         }
@@ -646,7 +667,9 @@ public class OrderService {
         orderStore.deleteBuyerBlacklist(tenantId, entryId);
     }
 
+    @Transactional
     public PmsRiskAlert receivePmsRiskAlert(String tenantId, ReceivePmsRiskAlertCommand command) {
+        if (command.orderId() != null) ensureNoWarehouseWork(tenantId, command.orderId());
         PmsRiskAlert alert = new PmsRiskAlert(
                 UUID.randomUUID().toString(),
                 tenantId,
@@ -917,6 +940,13 @@ public class OrderService {
                 || status == OrderStatus.CREATED
                 || status == OrderStatus.CONFIRMED
                 || status == OrderStatus.PAID;
+    }
+
+    private void ensureNoWarehouseWork(String tenantId, String orderId) {
+        orderStore.lock(tenantId, orderId);
+        if (warehousePicking.exists(tenantId, orderId)) {
+            throw new BizException("ORDER_WAREHOUSE_WORK_EXISTS", "订单已下发仓储，请在仓储作业中处理实物，不能直接修改履约或发货");
+        }
     }
 
     private void ensureOrderCanPlanFulfillment(SalesOrder order) {

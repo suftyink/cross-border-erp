@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.SalesPickingMapper">
+    <select id="findBySalesOrder" resultType="string">
+        SELECT outbound_id FROM wms_sales_pick_work WHERE tenant_id = #{tenantId} AND sales_order_id = #{salesOrderId}
+    </select>
+    <select id="list" resultType="string">
+        SELECT outbound_id FROM wms_sales_pick_work WHERE tenant_id = #{tenantId}
+        <if test="salesOrderId != null">AND sales_order_id = #{salesOrderId}</if>
+        ORDER BY created_at DESC, outbound_id
+    </select>
+    <select id="lockWork" resultType="string">
+        SELECT sales_order_id FROM wms_sales_pick_work
+        WHERE tenant_id = #{tenantId} AND outbound_id = #{outboundId} FOR UPDATE
+    </select>
+    <insert id="insertWork">
+        INSERT INTO wms_sales_pick_work(tenant_id, outbound_id, sales_order_id, operator_id)
+        VALUES (#{tenantId}, #{outboundId}, #{salesOrderId}, #{operatorId})
+    </insert>
+    <select id="candidates" resultType="com.aidotnet.erp.wms.domain.BatchStock">
+        SELECT b.batch_no, o.order_id, o.reference_id, b.warehouse_id, b.seller_sku, l.supplier_batch_no,
+               o.created_at, b.location_id, COALESCE(p.location_code, p.barcode) AS location_code, 'AVAILABLE' AS status,
+               b.quantity - b.reserved_quantity AS quantity
+        FROM wms_batch_location_balance b
+        JOIN wms_warehouse_location p ON p.tenant_id = b.tenant_id AND p.location_id = b.location_id
+        JOIN wms_inbound_order_line l ON l.tenant_id = b.tenant_id AND l.batch_no = b.batch_no
+        JOIN wms_inbound_order o ON o.tenant_id = b.tenant_id AND o.order_id = l.order_id
+        JOIN wms_purchase_inspection i ON i.tenant_id = b.tenant_id AND i.batch_no = b.batch_no
+        WHERE b.tenant_id = #{tenantId} AND b.warehouse_id = #{warehouseId} AND b.seller_sku = #{sellerSku}
+          AND p.warehouse_id = b.warehouse_id AND p.enabled AND p.purpose = 'GOOD'
+          AND o.reference_type = 'PURCHASE_RECEIPT' AND o.status = 'COMPLETED' AND i.disposed_at IS NOT NULL
+          AND b.quantity > b.reserved_quantity
+        ORDER BY o.created_at, b.batch_no, COALESCE(p.location_code, p.barcode), b.location_id
+    </select>
+    <update id="reserve">
+        UPDATE wms_batch_location_balance SET reserved_quantity = reserved_quantity + #{quantity}
+        WHERE tenant_id = #{tenantId} AND warehouse_id = #{stock.warehouseId}
+          AND batch_no = #{stock.batchNo} AND location_id = #{stock.locationId}
+          AND quantity - reserved_quantity &gt;= #{quantity}
+    </update>
+    <insert id="insertAllocation">
+        INSERT INTO wms_outbound_allocation(tenant_id, allocation_id, outbound_id, line_id, sales_line_id,
+                seller_sku, location_id, batch_no, planned_quantity)
+        VALUES (#{tenantId}, #{a.allocationId}, #{a.outboundId}, #{a.lineId}, #{a.salesLineId},
+                #{a.sellerSku}, #{a.locationId}, #{a.batchNo}, #{a.plannedQuantity})
+    </insert>
+    <sql id="allocationJoins">
+        FROM wms_outbound_allocation a
+        JOIN wms_warehouse_location p ON p.tenant_id = a.tenant_id AND p.location_id = a.location_id
+        JOIN wms_inbound_order_line l ON l.tenant_id = a.tenant_id AND l.batch_no = a.batch_no
+        JOIN wms_inbound_order o ON o.tenant_id = a.tenant_id AND o.order_id = l.order_id
+    </sql>
+    <select id="allocations" resultType="com.aidotnet.erp.common.wms.SalesOrderPicking$Allocation">
+        SELECT a.allocation_id, a.outbound_id, a.line_id, a.sales_line_id, a.seller_sku, a.location_id,
+               COALESCE(p.location_code, p.barcode) AS location_code, a.batch_no, o.order_id, o.reference_id,
+               a.planned_quantity, a.picked_quantity
+        <include refid="allocationJoins"/>
+        WHERE a.tenant_id = #{tenantId} AND a.outbound_id = #{outboundId}
+        ORDER BY a.sales_line_id, o.created_at, a.batch_no, COALESCE(p.location_code, p.barcode), a.allocation_id
+    </select>
+    <sql id="pickSelect">
+        SELECT k.request_id, k.outbound_id, k.allocation_id, a.location_id, COALESCE(p.location_code, p.barcode) AS location_code,
+               a.batch_no, a.seller_sku, o.order_id, o.reference_id, k.quantity, k.operator_id, k.created_at
+        <include refid="allocationJoins"/>
+        JOIN wms_actual_pick k ON k.tenant_id = a.tenant_id AND k.allocation_id = a.allocation_id
+    </sql>
+    <select id="picks" resultType="com.aidotnet.erp.common.wms.SalesOrderPicking$ActualPick">
+        <include refid="pickSelect"/> WHERE k.tenant_id = #{tenantId} AND k.outbound_id = #{outboundId}
+        ORDER BY k.created_at, k.request_id
+    </select>
+    <select id="findPick" resultType="com.aidotnet.erp.common.wms.SalesOrderPicking$ActualPick">
+        <include refid="pickSelect"/> WHERE k.tenant_id = #{tenantId} AND k.request_id = #{requestId}
+    </select>
+    <update id="pick">
+        UPDATE wms_batch_location_balance SET picked_quantity = picked_quantity + #{quantity}
+        WHERE tenant_id = #{tenantId} AND batch_no = #{a.batchNo} AND location_id = #{a.locationId}
+          AND reserved_quantity - picked_quantity &gt;= #{quantity}
+    </update>
+    <update id="pickAllocation">
+        UPDATE wms_outbound_allocation SET picked_quantity = picked_quantity + #{quantity}
+        WHERE tenant_id = #{tenantId} AND allocation_id = #{allocationId}
+    </update>
+    <insert id="insertPick">
+        INSERT INTO wms_actual_pick(tenant_id, request_id, outbound_id, allocation_id, quantity, operator_id, created_at)
+        VALUES (#{tenantId}, #{p.requestId}, #{p.outboundId}, #{p.allocationId}, #{p.quantity}, #{p.operatorId}, #{p.createdAt})
+    </insert>
+    <select id="physicalQuantity" resultType="int">
+        SELECT quantity - picked_quantity FROM wms_batch_location_balance
+        WHERE tenant_id = #{tenantId} AND batch_no = #{a.batchNo} AND location_id = #{a.locationId}
+    </select>
+</mapper>

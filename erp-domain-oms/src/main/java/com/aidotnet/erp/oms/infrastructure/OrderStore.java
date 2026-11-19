@@ -76,6 +76,10 @@ public class OrderStore {
         return Optional.ofNullable(orderMapper.selectById(orderId, tenantId)).map(this::toDomain);
     }
 
+    public void lock(String tenantId, String orderId) {
+        orderMapper.lockOrder(tenantId, orderId);
+    }
+
     public Optional<SalesOrder> findByPlatformOrderNo(String tenantId, String platform, String platformOrderNo) {
         return Optional.ofNullable(orderMapper.selectByPlatformOrderNo(tenantId, platform, platformOrderNo))
                 .map(this::toDomain);

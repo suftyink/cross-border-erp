@@ -56,7 +56,8 @@ class OrderServiceTest {
         tmsClient = mock(TmsClient.class);
         fulfillmentPlanStore = mock(FulfillmentPlanStore.class);
         platformShipmentSyncLogStore = mock(PlatformShipmentSyncLogStore.class);
-        orderService = new OrderService(orderStore, fulfillmentPlanStore, platformShipmentSyncLogStore, eventPublisher, wmsClient, fmsClient, tmsClient);
+        orderService = new OrderService(orderStore, fulfillmentPlanStore, platformShipmentSyncLogStore, eventPublisher, wmsClient, fmsClient, tmsClient,
+                mock(com.aidotnet.erp.common.wms.SalesOrderPicking.class));
     }
 
     @Test

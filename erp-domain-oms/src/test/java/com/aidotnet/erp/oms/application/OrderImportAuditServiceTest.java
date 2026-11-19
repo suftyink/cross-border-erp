@@ -52,7 +52,8 @@ class OrderImportAuditServiceTest {
                 mock(DomainEventPublisher.class),
                 wmsClient,
                 fmsClient,
-                tmsClient);
+                tmsClient,
+                mock(com.aidotnet.erp.common.wms.SalesOrderPicking.class));
 
         service.importOrder("T1", new OrderService.ImportOrderCommand(
                 "AMAZON",
@@ -111,7 +112,8 @@ class OrderImportAuditServiceTest {
                 mock(DomainEventPublisher.class),
                 mock(WmsClient.class),
                 mock(FmsClient.class),
-                mock(TmsClient.class));
+                mock(TmsClient.class),
+                mock(com.aidotnet.erp.common.wms.SalesOrderPicking.class));
 
         assertThrows(BizException.class, () -> service.importOrder("T1", new OrderService.ImportOrderCommand(
                 "AMAZON",

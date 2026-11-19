@@ -172,6 +172,9 @@ public class WarehouseOperationService {
 
     @Transactional
     public OutboundOrder createOutboundOrder(String tenantId, CreateOutboundOrderCommand command) {
+        if ("SALES_BATCH_PICK".equals(command.referenceType())) {
+            throw new BizException("SALES_BATCH_PICK_REQUIRED", "销售批次作业须由销售订单下发");
+        }
         ensureWarehouse(tenantId, command.warehouseId());
         Instant now = Instant.now();
         OutboundOrder order = new OutboundOrder(
@@ -202,6 +205,7 @@ public class WarehouseOperationService {
     @Transactional
     public OutboundOrder pickOutboundOrder(String tenantId, String orderId, PickOutboundCommand command) {
         OutboundOrder order = getOutboundOrder(tenantId, orderId);
+        ensureLegacyOutbound(order);
         if (order.status() != OutboundOrderStatus.PENDING && order.status() != OutboundOrderStatus.PICKING) {
             throw new BizException("OUTBOUND_STATUS_INVALID", "outbound order status does not allow picking");
         }
@@ -252,6 +256,12 @@ public class WarehouseOperationService {
                 Instant.now()));
     }
 
+    private void ensureLegacyOutbound(OutboundOrder order) {
+        if ("SALES_BATCH_PICK".equals(order.referenceType())) {
+            throw new BizException("SALES_BATCH_PICK_REQUIRED", "销售批次作业须按实际库位和批次登记");
+        }
+    }
+
     public List<OutboundOrder> listOutboundOrders(String tenantId, String warehouseId) {
         return orderStore.listOutboundOrders(tenantId, warehouseId);
     }
@@ -276,6 +286,7 @@ public class WarehouseOperationService {
     @Transactional
     public OutboundPackage createOutboundPackage(String tenantId, String orderId, CreateOutboundPackageCommand command) {
         OutboundOrder order = getOutboundOrder(tenantId, orderId);
+        ensureLegacyOutbound(order);
         if (order.status() == OutboundOrderStatus.PENDING || order.status() == OutboundOrderStatus.CANCELLED) {
             throw new BizException("OUTBOUND_PACKAGE_STATUS_INVALID", "outbound order status does not allow packing");
         }
@@ -367,6 +378,7 @@ public class WarehouseOperationService {
     @Transactional
     public OutboundPackage shipOutboundPackage(String tenantId, String packageId, ShipOutboundPackageCommand command) {
         OutboundPackage outboundPackage = getOutboundPackage(tenantId, packageId);
+        ensureLegacyOutbound(getOutboundOrder(tenantId, outboundPackage.orderId()));
         if (outboundPackage.status() != OutboundPackageStatus.WEIGHED) {
             throw new BizException("OUTBOUND_PACKAGE_STATUS_INVALID", "package must be weighed before shipping");
         }

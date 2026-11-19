@@ -14,6 +14,7 @@ import { InspectionDialog, InspectionWork } from './purchase-inspection';
 import { PurchasePutaway } from './purchase-putaway';
 import { PurchaseReturns, ReceiptReturnAction } from './purchase-returns';
 import { newOperationId } from './operation-id';
+import { SalesPicking } from './sales-picking';
 
 const receiptsApi = '/wms/api/in/v1/purchase-receipts';
 type PendingReceipt = { orderId: string; request: PurchaseReceiptInput };
@@ -27,6 +28,12 @@ function ReceiptWork() {
   const purchaseOrderId = search.get('purchaseOrderId');
   const sourceBatchNo = search.get('batchNo');
   const returnId = search.get('returnId');
+  const salesOrderId = search.get('salesOrderId');
+  const outboundId = search.get('outboundId');
+  const [activeTab, setActiveTab] = useState(salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
+  useEffect(() => {
+    setActiveTab(salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
+  }, [salesOrderId, outboundId, returnId, purchaseOrderId, sourceBatchNo]);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder>();
   const [replacement, setReplacement] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<PurchaseReceipt>();
@@ -97,7 +104,9 @@ function ReceiptWork() {
       {pending && !selectedOrder && work.data?.canReceive && <Alert type="warning" showIcon
         message={`待确认收货 ${pending.request.receiptId}`}
         action={<Button loading={saving} onClick={() => void sendReceipt(pending)}>重试原确认</Button>} />}
-      <Tabs defaultActiveKey={returnId ? 'returns' : 'receiving'} items={[{ key: 'receiving', label: '收货', children: (
+      <Tabs activeKey={activeTab} onChange={setActiveTab} items={[{ key: 'picking', label: '拣货与出库', children: (
+        <SalesPicking salesOrderId={salesOrderId} outboundId={outboundId} warehouses={warehouses ?? []} />
+      ) }, { key: 'receiving', label: '收货', children: (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           {work.data?.canReceive && <Card title="收货待办">
             <Table<PurchaseOrder> rowKey="poId" size="small" dataSource={purchaseOrders} columns={[

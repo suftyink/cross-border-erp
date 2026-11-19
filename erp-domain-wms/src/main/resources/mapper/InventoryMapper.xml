@@ -45,10 +45,15 @@
     </update>
 
     <select id="selectLocatedQuantity" resultType="long">
-        SELECT COALESCE(SUM(b.quantity), 0) FROM wms_batch_location_balance b
+        SELECT COALESCE(SUM(b.quantity - b.reserved_quantity), 0) FROM wms_batch_location_balance b
         JOIN wms_warehouse_location l ON l.tenant_id = b.tenant_id AND l.location_id = b.location_id
         WHERE b.tenant_id = #{tenantId} AND b.warehouse_id = #{warehouseId} AND b.seller_sku = #{sellerSku}
           AND l.purpose = 'GOOD'
+    </select>
+
+    <select id="selectBatchReserved" resultType="long">
+        SELECT COALESCE(SUM(reserved_quantity), 0) FROM wms_batch_location_balance
+        WHERE tenant_id = #{tenantId} AND warehouse_id = #{warehouseId} AND seller_sku = #{sellerSku}
     </select>
 
     <select id="hasBatchLocations" resultType="boolean">

@@ -28,6 +28,8 @@ import org.apache.ibatis.annotations.Param;
 @Mapper
 public interface OrderMapper {
 
+    String lockOrder(@Param("tenantId") String tenantId, @Param("orderId") String orderId);
+
     // ---- 订单 ----
 
     /** 新增订单 */

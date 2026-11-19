@@ -104,7 +104,8 @@ public class InventoryStore {
 
     public InventoryBalance saveBalance(InventoryBalance balance) {
         long located = locatedQuantity(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
-        if (located > 0 && balance.getAvailable() < located) {
+        long batchReserved = inventoryMapper.selectBatchReserved(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
+        if (balance.getAvailable() < located || balance.reserved() < batchReserved) {
             throw new BizException("BATCH_STOCK_OPERATION_REQUIRED", "已按库位管理的库存需要按实物批次办理");
         }
         inventoryMapper.ensureBalance(balance.tenantId(), balance.warehouseId(), balance.sellerSku());

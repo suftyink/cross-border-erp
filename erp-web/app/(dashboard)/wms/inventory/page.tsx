@@ -9,10 +9,10 @@ import type { InventoryBalance, Warehouse, WarehouseLocation } from '@/types';
 
 const wms = '/wms/api/in/v1';
 const stockLabels: Record<string, string> = {
-  PENDING_INSPECTION: '待检', PENDING_PUTAWAY: '待上架', QUARANTINED: '隔离', AVAILABLE: '可用',
+  PENDING_INSPECTION: '待检', PENDING_PUTAWAY: '待上架', QUARANTINED: '隔离', AVAILABLE: '可用', RESERVED: '已预占待拣', PICKED: '已拣（发货暂存）',
 };
 const movementLabels: Record<string, string> = {
-  RECEIVE: '入库', RESERVE: '预占', RELEASE: '释放预占', DEDUCT: '出库', STOCK_ADJUST: '调整',
+  RECEIVE: '入库', RESERVE: '预占', RELEASE: '释放预占', DEDUCT: '出库', STOCK_ADJUST: '调整', SALES_PICK: '实拣转发货暂存',
   QUALITY_DISPOSITION: '质检判定', PURCHASE_PUTAWAY: '确认上架',
   PURCHASE_QUARANTINE: '隔离入位', PURCHASE_SUPPLIER_RETURN: '退供出库',
 };
@@ -36,6 +36,7 @@ interface Movement {
   sellerSku: string;
   transactionType: string;
   referenceId?: string;
+  referenceType?: string;
   batchNo?: string;
   operatorId?: string;
   quantity: number;
@@ -48,6 +49,8 @@ interface Movement {
   afterPendingPutaway?: number;
   beforeOnHand: number;
   afterOnHand: number;
+  beforeReserved: number;
+  afterReserved: number;
   pendingInspectionDelta?: number;
   pendingPutawayDelta?: number;
   quarantinedDelta?: number;
@@ -123,10 +126,11 @@ function InventoryLedger() {
             { title: '预占', dataIndex: 'reserved' }, { title: '冻结', dataIndex: 'frozen' }, { title: '在途', dataIndex: 'inTransit' },
           ]} /> },
         { key: 'batch', label: '库位与批次', children: <Table<BatchBalance> size="small" scroll={{ x: 'max-content' }}
-          rowKey={(item) => `${item.batchNo}/${item.locationId ?? item.status}`}
+          rowKey={(item) => `${item.batchNo}/${item.locationId ?? 'unplaced'}/${item.status}`}
           loading={balances.isLoading} dataSource={balances.data ?? []} columns={[
             { title: '仓库', render: (_, item) => warehouseLabel(item.warehouseId) },
-            { title: '库位', render: (_, item) => locationLabel(item.locationId, item.locationCode) },
+            { title: '库位', render: (_, item) => item.status === 'PICKED'
+              ? `发货暂存（原库位 ${locationLabel(item.locationId, item.locationCode)}）` : locationLabel(item.locationId, item.locationCode) },
             { title: 'SKU', dataIndex: 'sellerSku' }, { title: '收货批次', dataIndex: 'batchNo' },
             { title: '供应商批号', dataIndex: 'supplierBatchNo' },
             { title: '库存状态', render: (_, item) => <Tag>{stockLabels[item.status] ?? item.status}</Tag> },
@@ -138,7 +142,9 @@ function InventoryLedger() {
           loading={transactions.isLoading} dataSource={transactions.data ?? []} scroll={{ x: 'max-content' }} columns={[
             { title: '时间', render: (_, item) => new Date(item.createdAt).toLocaleString() },
             { title: '作业', render: (_, item) => movementLabels[item.transactionType] ?? item.transactionType },
-            { title: '来源单据号', render: (_, item) => item.transactionType === 'PURCHASE_SUPPLIER_RETURN' && item.referenceId
+            { title: '来源单据号', render: (_, item) => item.referenceType === 'SALES_BATCH_PICK' && item.referenceId
+              ? <Link href={`/wms/operations?outboundId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>
+              : item.transactionType === 'PURCHASE_SUPPLIER_RETURN' && item.referenceId
               ? <Link href={`/wms/operations?returnId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>
               : item.batchNo
               ? <Link href={`/wms/operations?batchNo=${encodeURIComponent(item.batchNo)}`}>{item.referenceId ?? item.batchNo}</Link>
@@ -151,8 +157,9 @@ function InventoryLedger() {
               : item.transactionType === 'PURCHASE_PUTAWAY' ? '待上架区（未入位）'
                 : item.transactionType === 'PURCHASE_QUARANTINE' ? '隔离次品（未入位）' : '—' },
             { title: '目标库位', render: (_, item) => item.targetLocationId
-              ? locationLabel(item.targetLocationId, item.remark) : '—' },
+              ? locationLabel(item.targetLocationId, item.remark) : item.transactionType === 'SALES_PICK' ? '发货暂存区' : '—' },
             { title: '仓库在手', render: (_, item) => `${item.beforeOnHand} → ${item.afterOnHand}` },
+            { title: '订单预占', render: (_, item) => `${item.beforeReserved} → ${item.afterReserved}` },
             { title: '库位结存', render: (_, item) => item.afterLocationQuantity == null ? '—'
               : `${item.beforeLocationQuantity} → ${item.afterLocationQuantity}` },
             { title: '批次待上架', render: (_, item) => item.afterPendingPutaway == null ? '—'

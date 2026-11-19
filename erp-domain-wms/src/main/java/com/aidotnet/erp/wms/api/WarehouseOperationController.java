@@ -120,6 +120,7 @@ public class WarehouseOperationController {
 
     @GetMapping("/outbound-orders/{orderId}/lines")
     public Result<List<OutboundOrderLine>> listOutboundOrderLines(@PathVariable String orderId) {
+        warehouseOperationService.getOutboundOrder(currentTenant(), orderId);
         return Result.ok(warehouseOperationService.listOutboundOrderLines(orderId));
     }
 
