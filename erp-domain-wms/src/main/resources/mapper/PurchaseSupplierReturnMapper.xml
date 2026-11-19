@@ -4,7 +4,7 @@
     <select id="pendingIsolation" resultType="com.aidotnet.erp.wms.domain.BatchStock">
         SELECT l.batch_no, o.order_id, o.reference_id, o.warehouse_id, l.seller_sku, l.supplier_batch_no,
                o.created_at, NULL::varchar AS location_id, NULL::varchar AS location_code,
-               'QUARANTINED' AS status, i.defective_quantity - i.isolated_quantity AS quantity
+               'QUARANTINED' AS status, i.defective_quantity - i.isolated_quantity AS quantity, 'PURCHASE_RECEIPT' AS source_type, o.order_id AS source_document_id
         FROM wms_inbound_order o
         JOIN wms_inbound_order_line l ON l.order_id = o.order_id
         JOIN wms_purchase_inspection i ON i.tenant_id = o.tenant_id AND i.batch_no = l.batch_no

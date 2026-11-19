@@ -20,7 +20,7 @@
 
     <select id="balances" resultType="com.aidotnet.erp.wms.domain.BatchStock">
         SELECT l.batch_no, o.order_id, o.reference_id, o.warehouse_id, l.seller_sku, l.supplier_batch_no,
-               o.created_at, s.location_id, s.location_code, s.status, s.quantity
+               o.created_at, s.location_id, s.location_code, s.status, s.quantity, 'PURCHASE_RECEIPT' AS source_type, o.order_id AS source_document_id
         FROM wms_inbound_order o
         JOIN wms_inbound_order_line l ON l.order_id = o.order_id
         LEFT JOIN wms_purchase_inspection i ON i.tenant_id = o.tenant_id AND i.batch_no = l.batch_no
@@ -70,7 +70,18 @@
         <if test="filter.locationId != null">AND s.location_id = #{filter.locationId}</if>
         <if test="filter.sellerSku != null">AND l.seller_sku = #{filter.sellerSku}</if>
         <if test="filter.batchNo != null">AND l.batch_no = #{filter.batchNo}</if>
-        ORDER BY o.created_at, l.batch_no, s.status, s.location_code
+        <if test="!pendingOnly">
+            UNION ALL
+            SELECT r.batch_no, r.receipt_id, r.purchase_order_id, r.warehouse_id, r.seller_sku, NULL, r.received_at,
+                   NULL, NULL, 'PENDING_INSPECTION', r.quantity, 'SALES_RETURN', r.return_id
+            FROM wms_sales_return_receipt r WHERE r.tenant_id=#{tenantId}
+            <if test="filter.warehouseId != null">AND r.warehouse_id=#{filter.warehouseId}</if>
+            <if test="filter.purchaseOrderId != null">AND r.purchase_order_id=#{filter.purchaseOrderId}</if>
+            <if test="filter.locationId != null">AND FALSE</if>
+            <if test="filter.sellerSku != null">AND r.seller_sku=#{filter.sellerSku}</if>
+            <if test="filter.batchNo != null">AND r.batch_no=#{filter.batchNo}</if>
+        </if>
+        ORDER BY 7, 1, 10, 9
     </select>
 
     <select id="recommendLocation" resultType="string">

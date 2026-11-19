@@ -81,7 +81,8 @@
 
     <sql id="balancesWithPurchaseStates">
         SELECT b.tenant_id, b.warehouse_id, b.seller_sku, b.on_hand, b.reserved, b.in_transit, b.frozen, b.updated_at,
-               qc.pending_inspection + (SELECT COALESCE(SUM(CASE WHEN c.withdrawn_at IS NOT NULL THEN c.quantity ELSE c.direct_pending_quantity END), 0)
+               qc.pending_inspection + (SELECT COALESCE(SUM(sr.quantity), 0) FROM wms_sales_return_receipt sr
+                WHERE sr.tenant_id=b.tenant_id AND sr.warehouse_id=b.warehouse_id AND sr.seller_sku=b.seller_sku) + (SELECT COALESCE(SUM(CASE WHEN c.withdrawn_at IS NOT NULL THEN c.quantity ELSE c.direct_pending_quantity END), 0)
                 FROM wms_quality_correction c JOIN wms_inbound_order_line cl ON cl.tenant_id = c.tenant_id AND cl.batch_no = c.batch_no
                 JOIN wms_inbound_order co ON co.tenant_id = cl.tenant_id AND co.order_id = cl.order_id
                 WHERE c.tenant_id = b.tenant_id AND co.warehouse_id = b.warehouse_id AND cl.seller_sku = b.seller_sku AND c.inspected_at IS NULL) AS pending_inspection,

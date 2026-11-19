@@ -96,6 +96,7 @@ public record InventoryTransaction(
         PUTAWAY_REVERSE,
         SALES_UNPICK,
         INSPECTION_WITHDRAW,
-        QUALITY_REINSPECT
+        QUALITY_REINSPECT,
+        SALES_RETURN_RECEIVE
     }
 }

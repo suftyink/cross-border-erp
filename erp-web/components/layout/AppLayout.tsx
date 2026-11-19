@@ -87,6 +87,7 @@ const menuItems = [
     children: [
       { key: '/crm/customers', label: '客户管理' },
       { key: '/crm/tickets', label: '工单管理' },
+      { key: '/crm/recalls', label: '批次召回与退货' },
       { key: '/crm/email-rules', label: '邮件规则' },
       { key: '/crm/campaigns', label: '邮件营销' },
       { key: '/crm/quality', label: '质量问题' },

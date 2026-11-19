@@ -23,7 +23,7 @@
     <select id="candidates" resultType="com.aidotnet.erp.wms.domain.BatchStock">
         SELECT b.batch_no, o.order_id, o.reference_id, b.warehouse_id, b.seller_sku, l.supplier_batch_no,
                o.created_at, b.location_id, COALESCE(p.location_code, p.barcode) AS location_code, 'AVAILABLE' AS status,
-               b.quantity - b.reserved_quantity - b.review_quantity AS quantity
+               b.quantity - b.reserved_quantity - b.review_quantity AS quantity, 'PURCHASE_RECEIPT' AS source_type, o.order_id AS source_document_id
         FROM wms_batch_location_balance b
         JOIN wms_warehouse_location p ON p.tenant_id = b.tenant_id AND p.location_id = b.location_id
         JOIN wms_inbound_order_line l ON l.tenant_id = b.tenant_id AND l.batch_no = b.batch_no

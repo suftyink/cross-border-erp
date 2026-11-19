@@ -7,6 +7,7 @@ import java.util.List;
 /** WMS 提供不可变的实际发货结果；OMS 读取结果，不发起库存扣减。 */
 public interface WarehouseShipments {
     Shipment get(String tenantId, String packageId);
+    List<Trace> forBatch(String tenantId, String batchNo);
     List<Shipment> forOrder(String tenantId, String salesOrderId);
 
     interface Receiver {

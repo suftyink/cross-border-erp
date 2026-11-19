@@ -15,6 +15,7 @@ import { PurchasePutaway } from './purchase-putaway';
 import { PurchaseReturns, ReceiptReturnAction } from './purchase-returns';
 import { newOperationId } from './operation-id';
 import { SalesPicking } from './sales-picking';
+import { SalesReturnWork } from './sales-return-work';
 import { QualityCorrections } from './quality-corrections';
 import { ShortPickWork } from './short-pick-work';
 
@@ -34,11 +35,12 @@ function ReceiptWork() {
   const outboundId = search.get('outboundId');
   const reviewId = search.get('reviewId');
   const correctionId = search.get('correctionId');
+  const salesReturnId = search.get('salesReturnId');
   const requestedTab = search.get('tab');
-  const [activeTab, setActiveTab] = useState(correctionId || requestedTab === 'quality' ? 'quality' : requestedTab === 'putaway' ? 'putaway' : reviewId ? 'reviews' : salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
+  const [activeTab, setActiveTab] = useState(salesReturnId ? 'salesReturns' : correctionId || requestedTab === 'quality' ? 'quality' : requestedTab === 'putaway' ? 'putaway' : reviewId ? 'reviews' : salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
   useEffect(() => {
-    setActiveTab(correctionId || requestedTab === 'quality' ? 'quality' : requestedTab === 'putaway' ? 'putaway' : reviewId ? 'reviews' : salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
-  }, [salesOrderId, outboundId, returnId, purchaseOrderId, sourceBatchNo, reviewId, correctionId, requestedTab]);
+    setActiveTab(salesReturnId ? 'salesReturns' : correctionId || requestedTab === 'quality' ? 'quality' : requestedTab === 'putaway' ? 'putaway' : reviewId ? 'reviews' : salesOrderId || outboundId ? 'picking' : returnId ? 'returns' : 'receiving');
+  }, [salesOrderId, outboundId, returnId, purchaseOrderId, sourceBatchNo, reviewId, correctionId, requestedTab, salesReturnId]);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder>();
   const [replacement, setReplacement] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<PurchaseReceipt>();
@@ -142,7 +144,7 @@ function ReceiptWork() {
             ]} />
           </Card>
         </Space>
-      ) }, { key: 'quality', label: '质检更正', children: <QualityCorrections correctionId={correctionId} batchNo={sourceBatchNo} /> }, { key: 'inspection', label: '质检', children: (
+      ) }, { key: 'salesReturns', label: '销售退货', children: <SalesReturnWork returnId={salesReturnId} /> }, { key: 'quality', label: '质检更正', children: <QualityCorrections correctionId={correctionId} batchNo={sourceBatchNo} /> }, { key: 'inspection', label: '质检', children: (
         <InspectionWork purchaseOrderId={purchaseOrderId} warehouses={warehouses ?? []} />
       ) }, { key: 'putaway', label: '上架', children: (
         <PurchasePutaway purchaseOrderId={purchaseOrderId} warehouses={warehouses ?? []} />

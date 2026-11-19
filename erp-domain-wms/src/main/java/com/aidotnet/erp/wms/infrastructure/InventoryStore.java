@@ -83,6 +83,19 @@ public class InventoryStore {
                 batchNo, operatorId, quantity, 0, 0));
     }
 
+    public void receiveSalesReturn(String tenantId, com.aidotnet.erp.common.crm.SalesReturnOrders.Order order,
+                                   com.aidotnet.erp.common.crm.SalesReturnOrders.Receipt receipt) {
+        InventoryBalance before = lockOrCreateBalance(tenantId, order.warehouseId(), order.sellerSku());
+        int quantity = receipt.quantity();
+        InventoryBalance after = new InventoryBalance(tenantId, order.warehouseId(), order.sellerSku(),
+                Math.addExact(before.onHand(), quantity), before.reserved(), before.inTransit(), Math.addExact(before.frozen(), quantity), receipt.receivedAt());
+        saveBalance(after);
+        saveTransaction(new InventoryTransaction(UUID.randomUUID().toString(), tenantId, order.warehouseId(), order.sellerSku(),
+                InventoryTransaction.TransactionType.SALES_RETURN_RECEIVE, quantity, before.onHand(), before.reserved(), after.onHand(), after.reserved(),
+                "SALES_RETURN", order.returnId(), "销售退货实收转待检，收货编号 " + receipt.receiptId(), receipt.receivedAt(),
+                receipt.batchNo(), receipt.operatorId(), quantity, 0, 0));
+    }
+
     public void recordPurchaseDisposition(String tenantId, PurchaseInspectionBatch batch, String inspectionId,
                                            String operatorId, int good, int defective, Instant at) {
         InventoryBalance balance = lockBalanceWithPurchaseStates(tenantId, batch.warehouseId(), batch.sellerSku())

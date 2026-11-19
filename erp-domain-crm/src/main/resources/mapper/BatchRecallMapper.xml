@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aidotnet.erp.crm.infrastructure.mapper.BatchRecallMapper">
+    <insert id="ensureScope">INSERT INTO crm_recall_batch_scope(tenant_id,batch_no) VALUES (#{tenant},#{batch}) ON CONFLICT DO NOTHING</insert>
+    <select id="lockScope" resultType="string">SELECT batch_no FROM crm_recall_batch_scope WHERE tenant_id=#{tenant} AND batch_no=#{batch} FOR UPDATE</select>
+    <select id="sourceClaimed" resultType="boolean">SELECT EXISTS(SELECT 1 FROM crm_batch_recall_source WHERE tenant_id=#{tenant} AND package_id=#{packageId} AND pick_id=#{pick})</select>
+    <insert id="insertRecall">
+        INSERT INTO crm_batch_recall(tenant_id,recall_id,batch_no,reason,created_by,created_at)
+        VALUES (#{tenant},#{r.recallId},#{r.batchNo},#{r.reason},#{r.createdBy},#{r.createdAt})
+    </insert>
+    <select id="recall" resultType="com.aidotnet.erp.crm.domain.BatchRecall">
+        SELECT recall_id,batch_no,reason,created_by,created_at FROM crm_batch_recall WHERE tenant_id=#{tenant} AND recall_id=#{id}
+    </select>
+    <select id="list" resultType="com.aidotnet.erp.crm.domain.BatchRecall">
+        SELECT recall_id,batch_no,reason,created_by,created_at FROM crm_batch_recall WHERE tenant_id=#{tenant}
+        <if test="batch != null">AND batch_no=#{batch}</if> ORDER BY created_at DESC,recall_id
+    </select>
+    <insert id="insertLine">
+        INSERT INTO crm_batch_recall_line(tenant_id,line_id,recall_id,sales_order_id,outbound_id,warehouse_id,seller_sku,batch_no,source_receipt_id,purchase_order_id,expected_quantity)
+        VALUES (#{tenant},#{line.lineId},#{line.recallId},#{line.salesOrderId},#{line.outboundId},#{line.warehouseId},#{line.sellerSku},#{line.batchNo},#{line.sourceReceiptId},#{line.purchaseOrderId},#{line.expectedQuantity})
+    </insert>
+    <select id="lines" resultType="com.aidotnet.erp.crm.domain.BatchRecall$Line">
+        SELECT l.line_id,l.recall_id,l.sales_order_id,l.outbound_id,l.warehouse_id,l.seller_sku,l.batch_no,l.source_receipt_id,l.purchase_order_id,l.expected_quantity,
+            COALESCE((SELECT SUM(r.quantity) FROM crm_sales_return r WHERE r.tenant_id=l.tenant_id AND r.recall_line_id=l.line_id),0) AS authorized_quantity,
+            COALESCE((SELECT SUM(r.received_quantity) FROM crm_sales_return r WHERE r.tenant_id=l.tenant_id AND r.recall_line_id=l.line_id),0) AS received_quantity,
+            COALESCE((SELECT SUM(r.confirmed_quantity) FROM crm_sales_return r WHERE r.tenant_id=l.tenant_id AND r.recall_line_id=l.line_id),0) AS confirmed_quantity,
+            (SELECT COUNT(*) FROM crm_recall_notification n WHERE n.tenant_id=l.tenant_id AND n.line_id=l.line_id) AS notification_count
+        FROM crm_batch_recall_line l WHERE l.tenant_id=#{tenant} AND l.recall_id=#{recall} ORDER BY l.sales_order_id,l.outbound_id,l.line_id
+    </select>
+    <select id="lockLine" resultType="string">SELECT recall_id FROM crm_batch_recall_line WHERE tenant_id=#{tenant} AND line_id=#{line} FOR UPDATE</select>
+    <insert id="insertSource">
+        INSERT INTO crm_batch_recall_source(tenant_id,recall_id,line_id,package_id,outbound_id,sales_order_id,warehouse_id,pick_id,sales_line_id,seller_sku,location_id,location_code,batch_no,receipt_id,purchase_order_id,quantity,shipped_at,operator_id)
+        VALUES (#{tenant},#{recall},#{line},#{s.packageId},#{s.outboundId},#{s.salesOrderId},#{s.warehouseId},#{s.pickId},#{s.salesLineId},#{s.sellerSku},#{s.locationId},#{s.locationCode},#{s.batchNo},#{s.receiptId},#{s.purchaseOrderId},#{s.quantity},#{s.shippedAt},#{s.operatorId})
+    </insert>
+    <select id="sources" resultType="com.aidotnet.erp.common.wms.WarehouseShipments$Trace">
+        SELECT package_id,outbound_id,sales_order_id,warehouse_id,pick_id,sales_line_id,seller_sku,location_id,location_code,batch_no,receipt_id,purchase_order_id,quantity,shipped_at,operator_id
+        FROM crm_batch_recall_source WHERE tenant_id=#{tenant} AND recall_id=#{recall} ORDER BY shipped_at,package_id,pick_id
+    </select>
+    <insert id="insertNotification">
+        INSERT INTO crm_recall_notification(tenant_id,notification_id,line_id,channel,content,operator_id,notified_at)
+        VALUES (#{tenant},#{n.notificationId},#{n.lineId},#{n.channel},#{n.content},#{n.operatorId},#{n.notifiedAt})
+    </insert>
+    <sql id="notificationColumns">notification_id,line_id,channel,content,operator_id,notified_at</sql>
+    <select id="notification" resultType="com.aidotnet.erp.crm.domain.BatchRecall$Notification">
+        SELECT <include refid="notificationColumns"/> FROM crm_recall_notification WHERE tenant_id=#{tenant} AND notification_id=#{id}
+    </select>
+    <select id="notifications" resultType="com.aidotnet.erp.crm.domain.BatchRecall$Notification">
+        SELECT <include refid="notificationColumns"/> FROM crm_recall_notification WHERE tenant_id=#{tenant}
+          AND line_id IN (SELECT line_id FROM crm_batch_recall_line WHERE tenant_id=#{tenant} AND recall_id=#{recall}) ORDER BY notified_at,notification_id
+    </select>
+    <insert id="insertReturn">
+        INSERT INTO crm_sales_return(tenant_id,return_id,recall_id,recall_line_id,sales_order_id,outbound_id,warehouse_id,seller_sku,expected_batch_no,source_receipt_id,purchase_order_id,quantity,created_by,created_at)
+        VALUES (#{tenant},#{id},#{line.recallId},#{line.lineId},#{line.salesOrderId},#{line.outboundId},#{line.warehouseId},#{line.sellerSku},#{line.batchNo},#{line.sourceReceiptId},#{line.purchaseOrderId},#{quantity},#{operator},#{at})
+    </insert>
+    <sql id="returnColumns">return_id,recall_id,recall_line_id,sales_order_id,outbound_id,warehouse_id,seller_sku,expected_batch_no,source_receipt_id,purchase_order_id,quantity,received_quantity,confirmed_quantity,created_by,created_at</sql>
+    <select id="returnOrder" resultType="com.aidotnet.erp.common.crm.SalesReturnOrders$Order">
+        SELECT <include refid="returnColumns"/> FROM crm_sales_return WHERE tenant_id=#{tenant} AND return_id=#{id}
+    </select>
+    <select id="lineForReturn" resultType="string">SELECT recall_line_id FROM crm_sales_return WHERE tenant_id=#{tenant} AND return_id=#{id}</select>
+    <select id="lockReturn" resultType="string">SELECT return_id FROM crm_sales_return WHERE tenant_id=#{tenant} AND return_id=#{id} FOR UPDATE</select>
+    <select id="returns" resultType="com.aidotnet.erp.common.crm.SalesReturnOrders$Order">
+        SELECT <include refid="returnColumns"/> FROM crm_sales_return WHERE tenant_id=#{tenant} ORDER BY created_at DESC,return_id
+    </select>
+    <sql id="receiptColumns">receipt_id,return_id,batch_no,quantity,operator_id,received_at,verified_by,verified_at</sql>
+    <select id="receipt" resultType="com.aidotnet.erp.common.crm.SalesReturnOrders$Receipt">
+        SELECT <include refid="receiptColumns"/> FROM crm_sales_return_receipt WHERE tenant_id=#{tenant} AND receipt_id=#{id}
+    </select>
+    <select id="receipts" resultType="com.aidotnet.erp.common.crm.SalesReturnOrders$Receipt">
+        SELECT <include refid="receiptColumns"/> FROM crm_sales_return_receipt WHERE tenant_id=#{tenant} AND return_id=#{id} ORDER BY received_at,receipt_id
+    </select>
+    <insert id="insertReceipt">
+        INSERT INTO crm_sales_return_receipt(tenant_id,receipt_id,return_id,batch_no,quantity,operator_id,received_at)
+        VALUES (#{tenant},#{r.receiptId},#{r.returnId},#{r.batchNo},#{r.quantity},#{r.operatorId},#{r.receivedAt})
+    </insert>
+    <update id="addReceived">UPDATE crm_sales_return SET received_quantity=received_quantity+#{quantity} WHERE tenant_id=#{tenant} AND return_id=#{id}</update>
+    <update id="verify">UPDATE crm_sales_return_receipt SET verified_by=#{operator},verified_at=#{at} WHERE tenant_id=#{tenant} AND receipt_id=#{id}</update>
+    <update id="addConfirmed">UPDATE crm_sales_return SET confirmed_quantity=confirmed_quantity+#{quantity} WHERE tenant_id=#{tenant} AND return_id=#{id}</update>
+</mapper>

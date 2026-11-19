@@ -169,6 +169,11 @@ public class SalesDispatchService implements WarehouseShipments {
         return dispatch.packagesForOrder(tenant, orderId).stream().map(id -> get(tenant, id)).toList();
     }
 
+    @Override
+    public List<Trace> forBatch(String tenant, String batchNo) {
+        return dispatch.trace(tenant, new SalesDispatchMapper.TraceFilter(null, batchNo, null, null, null, null, null, null));
+    }
+
     public List<Trace> trace(String tenant, SalesDispatchMapper.TraceFilter filter) { return dispatch.trace(tenant, filter); }
 
     private OutboundOrder requireWork(String tenant, String outbound) {

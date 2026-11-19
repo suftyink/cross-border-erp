@@ -19,6 +19,7 @@ export function SalesBatchTrace({ purchaseOrderId, batchNo, packageId, warehouse
   const work = useApi<ShipmentTrace[]>(`/wms/api/in/v1/sales-dispatch/trace?${filters}`);
   return <Space direction="vertical" style={{ width: '100%' }}>
     {work.error && <Alert type="error" showIcon message="出库追溯加载失败" action={<Button onClick={() => void work.mutate()}>重新加载</Button>} />}
+    {!!batchNo.trim() && <Link href={`/crm/recalls?batchNo=${encodeURIComponent(batchNo.trim())}`}>查看批次召回范围与进度</Link>}
     <Table<ShipmentTrace> size="small" rowKey={(row) => `${row.packageId}/${row.pickId}`} loading={work.isLoading}
       dataSource={work.data ?? []} scroll={{ x: 'max-content' }} columns={[
         { title: '实际发货时间', render: (_, row) => new Date(row.shippedAt).toLocaleString() },

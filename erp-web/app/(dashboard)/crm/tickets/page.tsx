@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, Tag, Space, message, Card, Typography, Badge } from 'antd';
 import { PlusOutlined, EyeOutlined } from '@ant-design/icons';
@@ -48,6 +49,7 @@ export default function TicketsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>工单管理</Title>
         <Space>
+          <Link href="/crm/recalls">批次召回与销售退货</Link>
           <Select placeholder="状态" allowClear style={{ width: 120 }}
             options={Object.entries(statusMap).map(([k, v]) => ({ value: k, label: v.text }))}
             onChange={(v) => setParams({ ...params, status: v })} />

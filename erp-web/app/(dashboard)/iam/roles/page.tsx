@@ -18,12 +18,16 @@ const allPermissions = [
   'wms:putaway:write', 'wms:location:write',
   'oms:warehouse:write', 'wms:pick:write',
   'wms:ship:write',
+  'crm:recall:write', 'crm:return:write', 'wms:return:write',
   'wms:quality-correction:write', 'wms:quality-correction:approve',
   'wms:stock-review:write', 'wms:stock-review:approve',
   'wms:quarantine:write', 'scm:purchase-return:write', 'wms:purchase-return:ship',
 ];
 
 const permissionLabels: Record<string, string> = {
+  'crm:recall:write': '售后 · 批次召回与通知登记',
+  'crm:return:write': '售后 · 销售退货建单与批次核实',
+  'wms:return:write': '仓储 · 销售退货分批收货',
   'wms:quality-correction:write': '仓储 · 发起质检更正与实物退回',
   'wms:quality-correction:approve': '仓储 · 主管确认质检更正解除预占',
   'wms:stock-review:write': '仓储 · 录入缺拣复盘',

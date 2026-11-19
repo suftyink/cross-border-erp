@@ -14,6 +14,7 @@ const stockLabels: Record<string, string> = {
   PENDING_REVIEW: '待复核', QUALITY_HOLD: '质检更正暂停',
 };
 const movementLabels: Record<string, string> = {
+  SALES_RETURN_RECEIVE: '销售退货实收待检',
   QUALITY_HOLD: '质检更正暂停', QUALITY_RELEASE: '主管取消预占', PUTAWAY_REVERSE: '撤销上架', SALES_UNPICK: '撤拣直接退待检', INSPECTION_WITHDRAW: '撤销质检判定', QUALITY_REINSPECT: '更正后重新全检',
   RECEIVE: '入库', RESERVE: '预占', RELEASE: '释放预占', DEDUCT: '出库', STOCK_ADJUST: '调整', SALES_PICK: '实拣转发货暂存',
   QUALITY_DISPOSITION: '质检判定', PURCHASE_PUTAWAY: '确认上架',
@@ -22,6 +23,8 @@ const movementLabels: Record<string, string> = {
 };
 
 interface BatchBalance {
+  sourceType: string;
+  sourceDocumentId: string;
   batchNo: string;
   receiptId: string;
   purchaseOrderId: string;
@@ -148,7 +151,7 @@ function InventoryLedger() {
             { title: '预占', dataIndex: 'reserved' }, { title: '冻结', dataIndex: 'frozen' }, { title: '在途', dataIndex: 'inTransit' },
           ]} /> },
         { key: 'batch', label: '库位与批次', children: <Table<BatchBalance> size="small" scroll={{ x: 'max-content' }}
-          rowKey={(item) => `${item.batchNo}/${item.locationId ?? 'unplaced'}/${item.status}`}
+          rowKey={(item) => `${item.sourceType}/${item.sourceDocumentId}/${item.receiptId}/${item.batchNo}/${item.locationId ?? 'unplaced'}/${item.status}`}
           loading={balances.isLoading} dataSource={balances.data ?? []} columns={[
             { title: '仓库', render: (_, item) => warehouseLabel(item.warehouseId) },
             { title: '库位', render: (_, item) => item.status === 'PICKED'
@@ -158,7 +161,9 @@ function InventoryLedger() {
             { title: '库存状态', render: (_, item) => <Tag>{stockLabels[item.status] ?? item.status}</Tag> },
             { title: '结存', dataIndex: 'quantity' },
             { title: '来源与去向', render: (_, item) => <Space>
-              <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(item.purchaseOrderId)}`}>收货记录</Link>
+              {item.sourceType === 'SALES_RETURN'
+                ? <Link href={`/wms/operations?salesReturnId=${encodeURIComponent(item.sourceDocumentId)}`}>销售退货实收</Link>
+                : <Link href={`/wms/operations?purchaseOrderId=${encodeURIComponent(item.purchaseOrderId)}`}>收货记录</Link>}
               <Link href={`/wms/inventory?tab=shipments&batchNo=${encodeURIComponent(item.batchNo)}`}>出库去向</Link>
             </Space> },
           ]} /> },
@@ -166,7 +171,9 @@ function InventoryLedger() {
           loading={transactions.isLoading} dataSource={transactions.data ?? []} scroll={{ x: 'max-content' }} columns={[
             { title: '时间', render: (_, item) => new Date(item.createdAt).toLocaleString() },
             { title: '作业', render: (_, item) => movementLabels[item.transactionType] ?? item.transactionType },
-            { title: '来源单据号', render: (_, item) => item.referenceType === 'QUALITY_CORRECTION' && item.referenceId
+            { title: '来源单据号', render: (_, item) => item.referenceType === 'SALES_RETURN' && item.referenceId
+              ? <Link href={`/wms/operations?salesReturnId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>
+              : item.referenceType === 'QUALITY_CORRECTION' && item.referenceId
               ? <Link href={`/wms/operations?correctionId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>
               : item.referenceType === 'SHORT_PICK' && item.referenceId
               ? <Link href={`/wms/operations?reviewId=${encodeURIComponent(item.referenceId)}`}>{item.referenceId}</Link>
