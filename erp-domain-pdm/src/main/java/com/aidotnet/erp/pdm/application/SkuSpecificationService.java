@@ -1,17 +1,16 @@
 package com.aidotnet.erp.pdm.application;
 
 import com.aidotnet.erp.common.exception.BizException;
+import static com.aidotnet.erp.pdm.domain.Specification.key;
 import com.aidotnet.erp.pdm.domain.Sku;
 import com.aidotnet.erp.pdm.domain.Specification.Item;
 import com.aidotnet.erp.pdm.domain.Specification.Selection;
 import com.aidotnet.erp.pdm.infrastructure.SkuHistoryStore;
 import com.aidotnet.erp.pdm.infrastructure.SpecificationStore;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -110,11 +109,4 @@ public class SkuSpecificationService {
         return valid ? List.of() : List.of("完整且有效的规格组合");
     }
 
-    private String key(List<Selection> selections) {
-        if (selections.isEmpty()) {
-            return null; // 未声明组合不作为另一个结构化规格。
-        }
-        return selections.stream().sorted(Comparator.comparing(Selection::attributeId).thenComparing(Selection::valueId))
-                .map(item -> item.attributeId() + ":" + item.valueId()).collect(Collectors.joining("|"));
-    }
 }

@@ -10,6 +10,7 @@ import type { TableColumnsType } from 'antd';
 import { useApi } from '@/lib/hooks';
 import { skuDraftApi, skuPath, skuStatusLabels, spuPath, type SkuDraft, type SpuOption, type SkuBatchOutcome, type SkuMigrationIssue } from '@/lib/pdm-sku';
 import { SkuDraftForm } from './sku-draft-form';
+import { SkuGenerationButton } from './sku-generation';
 import { SkuHistoryPanel, SkuMigrationPanel } from './sku-history-panels';
 import { specificationText, type SpecificationItem } from '@/lib/pdm-specification';
 
@@ -102,7 +103,7 @@ export function SkuManagement({ spuId, initialKeyword = '', compact = false }: P
   const content = <Space direction="vertical" size={16} style={{ width: '100%' }}>
     <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
       <Typography.Title level={compact ? 5 : 4} style={{ margin: 0 }}>{compact ? 'SKU 列表' : 'SKU 管理'}</Typography.Title>
-      {canMaintain && <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setFormOpen(true); }}>新建 SKU</Button>}
+      {canMaintain && <Space wrap>{parent && <SkuGenerationButton spuId={parent} onGenerated={onSaved} />}<Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setFormOpen(true); }}>新建 SKU</Button></Space>}
     </Space>
     {!compact && !!migration.data?.length && <Alert type="warning" showIcon message={`有 ${migration.data.length} 条历史商品记录待核实`}
       action={<Button size="small" onClick={() => setMigrationOpen(true)}>查看待核实记录</Button>} />}
