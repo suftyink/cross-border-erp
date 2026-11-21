@@ -37,6 +37,9 @@ public class SkuHistoryStore {
     public void appendSpecification(String tenant, String skuId, Object before, Object after) {
         appendObjects(tenant, skuId, "SPECIFICATION", before, after, null);
     }
+    public void appendDetails(String tenant,String skuId,Object before,Object after) {
+        appendObjects(tenant,skuId,"DETAILS",before,after,null);
+    }
 
     private void appendObjects(String tenant,String skuId,String action,Object before,Object after,String reason) {
         var authentication = SecurityContextHolder.getContext().getAuthentication();

@@ -31,6 +31,14 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining("; "));
         return ResponseEntity.badRequest().body(Result.fail("VALIDATION_ERROR", message));
     }
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<Result<Void>> handleMalformedJson(org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        return ResponseEntity.badRequest().body(Result.fail("VALIDATION_ERROR","请求字段格式无效，请检查数值、整数和对象结构"));
+    }
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<Result<Void>> handleUploadTooLarge(org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(Result.fail("FILE_SIZE_LIMIT","上传文件超过大小限制"));
+    }
 
     @ExceptionHandler(MissingRequestHeaderException.class)
     public ResponseEntity<Result<Void>> handleMissingHeader(MissingRequestHeaderException ex) {

@@ -30,7 +30,7 @@ public class MinioStorageService {
         this.minioClient = minioClient;
     }
 
-    public void ensureBucket(String bucket) throws Exception {
+    public synchronized void ensureBucket(String bucket) throws Exception {
         if (!minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucket).build())) {
             minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
             log.info("Created MinIO bucket: {}", bucket);

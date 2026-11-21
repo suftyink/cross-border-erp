@@ -123,9 +123,11 @@ public class ShipmentController {
 
     @PostMapping("/shipping-rates/estimate")
     public Result<FreightEstimate> estimateShippingRate(@Valid @RequestBody EstimateShippingRateRequest request) {
-        return Result.ok(shipmentService.estimateShippingRate(currentTenant(), new EstimateShippingRateCommand(
+        String tenant=request.items()!=null && !request.items().isEmpty()?currentProductTenant():currentTenant();
+        return Result.ok(shipmentService.estimateShippingRate(tenant, new EstimateShippingRateCommand(
                 request.carrierId(), request.shippingMethodId(), request.originCountry(),
-                request.destinationCountry(), request.weight(), request.volume())));
+                request.destinationCountry(), request.weight(), request.volume(),request.items()==null?List.of():request.items().stream()
+                        .map(i -> new ShipmentService.ProductQuantity(i.skuId(),i.sellerSku(),i.quantity())).toList())));
     }
 
     @PostMapping("/shipments")
@@ -210,7 +212,16 @@ public class ShipmentController {
 
     public record EstimateShippingRateRequest(String carrierId, String shippingMethodId, String originCountry,
                                               @NotBlank String destinationCountry, @PositiveOrZero BigDecimal weight,
-                                              @PositiveOrZero BigDecimal volume) {}
+                                              @PositiveOrZero BigDecimal volume, @jakarta.validation.constraints.Size(max=200) List<@jakarta.validation.constraints.NotNull @Valid ProductQuantityRequest> items) {}
+    public record ProductQuantityRequest(@jakarta.validation.constraints.Size(max=64) String skuId,@jakarta.validation.constraints.Size(max=128) String sellerSku,
+                                          @jakarta.validation.constraints.NotNull @Positive @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=com.aidotnet.erp.common.pdm.StrictIntegerDeserializer.class) Integer quantity) {}
+
+    private String currentProductTenant() {
+        var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if(auth==null || !(auth.getDetails() instanceof com.aidotnet.erp.common.security.ErpUserDetails user)) throw new BizException("UNAUTHORIZED","请先登录");
+        if(!user.tenantId().equals(TenantContext.getTenantId())) throw new org.springframework.security.access.AccessDeniedException("登录账号与租户不一致");
+        return user.tenantId();
+    }
 
     public record CreateShipmentRequest(@NotBlank String orderId, String warehouseId, @NotBlank String carrierId,
                                         String shippingMethodId, @NotBlank String trackingNo,

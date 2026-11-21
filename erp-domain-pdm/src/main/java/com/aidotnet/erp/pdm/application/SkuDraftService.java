@@ -29,15 +29,17 @@ public class SkuDraftService {
     private final SkuIdentityPolicy identities;
     private final SkuHistoryStore history;
     private final SkuSpecificationService specifications;
+    private final SkuDetailsService details;
 
     public SkuDraftService(ProductStore store, ProductService products, SkuLifecycleService lifecycle,
-                           SkuIdentityPolicy identities, SkuHistoryStore history, SkuSpecificationService specifications) {
+                           SkuIdentityPolicy identities, SkuHistoryStore history, SkuSpecificationService specifications, SkuDetailsService details) {
         this.store = store;
         this.products = products;
         this.lifecycle = lifecycle;
         this.identities = identities;
         this.history = history;
         this.specifications = specifications;
+        this.details = details;
     }
 
     @Transactional
@@ -165,7 +167,7 @@ public class SkuDraftService {
                 sku.status() == ProductStatus.DRAFT || sku.status() == ProductStatus.ACTIVE || sku.status() == ProductStatus.INACTIVE,
                 List.copyOf(missing), sku.createdAt(), sku.updatedAt(), sku.everEnabled(), !identityEditable,
                 identityEditable, identityEditable, sku.everEnabled() == null || specifications.needsReview(sku.tenantId(),sku.skuId()),
-                specifications.items(sku.tenantId(),sku.skuId()));
+                specifications.items(sku.tenantId(),sku.skuId()), details.current(sku));
     }
 
     private static String clean(String value) {
@@ -184,5 +186,5 @@ public class SkuDraftService {
                                BigDecimal weightKg, BigDecimal declaredValue, String currency,
                                boolean editable, List<String> missingFields, Instant createdAt, Instant updatedAt,
                                Boolean everEnabled, boolean identityLocked, boolean identityEditable, boolean deletable,
-                               boolean historyReviewRequired, List<com.aidotnet.erp.pdm.domain.Specification.Item> specifications) {}
+                               boolean historyReviewRequired, List<com.aidotnet.erp.pdm.domain.Specification.Item> specifications, com.aidotnet.erp.common.pdm.ProductData details) {}
 }

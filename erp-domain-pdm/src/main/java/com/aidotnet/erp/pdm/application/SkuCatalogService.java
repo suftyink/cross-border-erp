@@ -22,14 +22,64 @@ public class SkuCatalogService implements SkuCatalog {
     private final SkuIdentityPolicy policy;
     private final SkuIdentityStore identities;
     private final SkuSpecificationService specifications;
+    private final SkuDetailsService details;
 
-    public SkuCatalogService(ProductStore products, SkuLifecycleService lifecycle, SkuIdentityPolicy policy, SkuIdentityStore identities, SkuSpecificationService specifications) {
+    public SkuCatalogService(ProductStore products, SkuLifecycleService lifecycle, SkuIdentityPolicy policy, SkuIdentityStore identities, SkuSpecificationService specifications, SkuDetailsService details) {
         this.products = products;
         this.lifecycle = lifecycle;
         this.policy = policy;
         this.identities = identities;
         this.specifications = specifications;
+        this.details = details;
     }
+
+    @Override
+    public List<Check> checkUsage(String tenant, Collection<Selection> selections, Usage usage) {
+        requireTenant(tenant);
+        if (selections==null || selections.isEmpty() || selections.size()>200 || usage==null) throw new BizException("SKU_SELECTION_INVALID","请选择 1 至 200 个商品并指定使用阶段");
+        List<Check> checks=new ArrayList<>();
+        for(Selection selection:selections) {
+            try {
+                Sku sku=resolve(tenant,selection);Item snapshot=item(sku);
+                List<String> missing=usageMissing(snapshot.details(),usage);
+                String action=switch(usage) {case FREIGHT -> "运费试算";case PACKAGING -> "包装尺寸使用";case DECLARATION -> "申报资料使用";};
+                checks.add(new Check(selection,missing.isEmpty(),missing.isEmpty()?"VALID":"SKU_USAGE_INCOMPLETE",
+                        missing.isEmpty()?"所需资料齐全":"SKU "+sku.sellerSku()+" 缺少"+action+"所需资料："+String.join("、",missing),missing,snapshot));
+            } catch(BizException error) { checks.add(failed(selection,error.getCode(),error.getMessage())); }
+        }
+        return List.copyOf(checks);
+    }
+
+    @Override
+    @Transactional
+    public List<Item> requireUsageData(String tenant,Collection<Selection> selections,Usage usage) {
+        specifications.lock(tenant); // 取得一致的资料快照，但不新增引用、不改变启停或历史履约资格。
+        List<Check> checks=checkUsage(tenant,selections,usage);
+        for(Check check:checks) if(!check.valid()) throw new BizException(check.code(),check.message());
+        return checks.stream().map(Check::item).toList();
+    }
+
+    private List<String> usageMissing(com.aidotnet.erp.common.pdm.ProductData data,Usage usage) {
+        List<String> missing=new ArrayList<>();
+        switch(usage) {
+            case FREIGHT -> { if(data.shippingWeightKg()==null) missing.add("运输重量（kg，需大于 0，取包装重量或商品重量）"); }
+            case PACKAGING -> {
+                var size=data.packageDimensionsCm();
+                if(size==null || !positive(size.lengthCm())) missing.add("单品包装长（cm）");
+                if(size==null || !positive(size.widthCm())) missing.add("单品包装宽（cm）");
+                if(size==null || !positive(size.heightCm())) missing.add("单品包装高（cm）");
+            }
+            case DECLARATION -> {
+                var declaration=data.declaration();
+                if(declaration==null || declaration.nameEnglish()==null || declaration.nameEnglish().isBlank()) missing.add("英文申报品名");
+                if(declaration==null || declaration.countryOfOrigin()==null || declaration.countryOfOrigin().isBlank()) missing.add("原产国");
+                if(!positive(data.declaredValue())) missing.add("申报金额（需大于 0）");
+                if(data.currency()==null || data.currency().isBlank()) missing.add("申报币种");
+            }
+        }
+        return List.copyOf(missing);
+    }
+    private boolean positive(java.math.BigDecimal value) { return value!=null && value.signum()>0; }
 
     @Override
     public List<Item> findActive(String tenantId, String keyword) {
@@ -102,7 +152,7 @@ public class SkuCatalogService implements SkuCatalog {
 
     private Item item(Sku sku) {
         return new Item(sku.skuId(), sku.spuId(), sku.sellerSku(), sku.title(), sku.baseUnit(), sku.status().name(), sku.weightKg(), sku.declaredValue(), sku.currency(),
-                specifications.items(sku.tenantId(),sku.skuId()).stream().map(i -> new SkuCatalog.Specification(i.attributeId(),i.attributeCode(),i.attributeName(),i.valueId(),i.valueCode(),i.valueName())).toList());
+                specifications.items(sku.tenantId(),sku.skuId()).stream().map(i -> new SkuCatalog.Specification(i.attributeId(),i.attributeCode(),i.attributeName(),i.valueId(),i.valueCode(),i.valueName())).toList(),details.current(sku));
     }
 
     private Check failed(Selection selection, String code, String message) { return new Check(selection, false, code, message, List.of(), null); }

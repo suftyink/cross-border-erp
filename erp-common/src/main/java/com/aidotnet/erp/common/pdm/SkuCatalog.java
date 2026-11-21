@@ -9,10 +9,13 @@ public interface SkuCatalog {
     List<Item> findActive(String tenantId, String keyword);
     List<Check> validate(String tenantId, Collection<Selection> selections);
     List<Item> requireActive(String tenantId, Collection<Selection> selections);
+    List<Check> checkUsage(String tenantId, Collection<Selection> selections, Usage usage);
+    List<Item> requireUsageData(String tenantId, Collection<Selection> selections, Usage usage);
+    enum Usage { FREIGHT, PACKAGING, DECLARATION }
 
     record Selection(String skuId, String sellerSku) {}
     record Item(String skuId, String spuId, String sellerSku, String title, String baseUnit, String status,
-                BigDecimal weightKg, BigDecimal declaredValue, String currency, List<Specification> specifications) {}
+                BigDecimal weightKg, BigDecimal declaredValue, String currency, List<Specification> specifications, ProductData details) {}
     record Specification(String attributeId,String attributeCode,String attributeName,String valueId,String valueCode,String valueName) {}
     record Check(Selection selection, boolean valid, String code, String message, List<String> missingFields, Item item) {}
 }

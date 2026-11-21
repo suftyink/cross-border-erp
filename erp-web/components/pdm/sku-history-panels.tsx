@@ -5,10 +5,15 @@ import { useApi } from '@/lib/hooks';
 import { skuPath, type SkuHistoryEntry, type SkuMigrationIssue } from '@/lib/pdm-sku';
 import { specificationText, type SpecificationItem } from '@/lib/pdm-specification';
 
-const actionNames: Record<string, string> = { CREATE: '新增', UPDATE: '修改资料', ENABLE: '启用', DISABLE: '停用', DELETE: '删除草稿', SPECIFICATION: '修改规格', MIGRATE_EVIDENCE: '历史证据记录' };
-const fieldNames: Record<string, string> = { sellerSku: '本地编码', spuId: '所属 SPU', title: '名称', baseUnit: '基本单位', status: '状态', specifications: '规格组合' };
+const actionNames: Record<string, string> = { CREATE: '新增', UPDATE: '修改资料', DETAILS: '修改商品资料', ENABLE: '启用', DISABLE: '停用', DELETE: '删除草稿', SPECIFICATION: '修改规格', MIGRATE_EVIDENCE: '历史证据记录' };
+const fieldNames: Record<string, string> = { sellerSku: '本地编码', spuId: '所属 SPU', title: '名称', baseUnit: '基本单位', status: '状态', specifications: '规格组合',
+  weightKg: '重量（kg）', declaredValue: '申报金额', currency: '币种', description: '商品说明', barcodes: '外部条码', images: '图片',
+  productDimensionsCm: '商品尺寸（cm）', packageWeightKg: '单件包装重量（kg）', packageDimensionsCm: '包装尺寸（cm）',
+  unitsPerCarton: '装箱数量', cartonDimensionsCm: '外箱尺寸（cm）', cartonWeightKg: '整箱毛重（kg）', declaration: '申报资料', remarks: '备注' };
 const format = (field: string, value: unknown) =>
-  field === 'specifications' ? specificationText(Array.isArray(value) ? (value as SpecificationItem[]) : undefined) : String(value ?? '—');
+  field === 'specifications' ? specificationText(Array.isArray(value) ? (value as SpecificationItem[]) : undefined)
+    : field === 'images' ? `${Array.isArray(value) ? value.length : 0} 张`
+    : typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value ?? '—');
 
 function fieldChanged(field: string, before: unknown, after: unknown) {
   if (field === 'specifications') {

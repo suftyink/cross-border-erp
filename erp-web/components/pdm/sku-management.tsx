@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { mutate } from 'swr';
-import { Alert, Button, Card, Descriptions, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Descriptions, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography, message } from 'antd';
 import { isAxiosError } from 'axios';
 import { EditOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
@@ -13,6 +13,9 @@ import { SkuDraftForm } from './sku-draft-form';
 import { SkuGenerationButton } from './sku-generation';
 import { SkuHistoryPanel, SkuMigrationPanel } from './sku-history-panels';
 import { specificationText, type SpecificationItem } from '@/lib/pdm-specification';
+import { ProductImage } from './product-images';
+import { SkuProductDetailsEditor, SkuProductDetailsView } from './sku-product-details';
+import { SkuUsagePanel } from './sku-usage-panel';
 
 interface Props { spuId?: string; initialKeyword?: string; compact?: boolean }
 
@@ -26,6 +29,7 @@ export function SkuManagement({ spuId, initialKeyword = '', compact = false }: P
   const [editing, setEditing] = useState<SkuDraft | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
+  const [productDataId, setProductDataId] = useState<string | null>(null);
   const [selected, setSelected] = useState<React.Key[]>([]);
   const [busy, setBusy] = useState(false);
   const [outcomes, setOutcomes] = useState<SkuBatchOutcome[] | null>(null);
@@ -69,6 +73,8 @@ export function SkuManagement({ spuId, initialKeyword = '', compact = false }: P
   const categoryName = (id: string | null) => categories.data?.find((item) => item.categoryId === id)?.name ?? '待补齐';
   const brandName = (id: string | null) => brands.data?.find((item) => item.brandId === id)?.name ?? '未设置';
   const columns: TableColumnsType<SkuDraft> = [
+    { title: '图片', key: 'image', width: 80, render: (_: unknown, row: SkuDraft) =>
+      row.details?.images?.[0] ? <ProductImage image={row.details.images[0]} size={48} /> : '—' },
     { title: '本地 SKU 编码', dataIndex: 'sellerSku', key: 'sellerSku', width: 210,
       render: (value: string) => <Typography.Text copyable>{value}</Typography.Text> },
     { title: 'SKU 名称', dataIndex: 'title', key: 'title', width: 180, render: (value: string | null) => value || <Typography.Text type="secondary">待补名称</Typography.Text> },
@@ -85,6 +91,7 @@ export function SkuManagement({ spuId, initialKeyword = '', compact = false }: P
       </Space> },
     { title: '操作', key: 'actions', width: 330, render: (_: unknown, row: SkuDraft) => <Space size={0} wrap>
       <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setDetailId(row.skuId)}>查看</Button>
+      {canMaintain && row.editable && <Button type="link" size="small" onClick={() => setProductDataId(row.skuId)}>商品资料</Button>}
       {canMaintain && row.editable && <Button type="link" size="small" icon={<EditOutlined />}
         onClick={() => { setEditing(row); setFormOpen(true); }}>编辑</Button>}
       {canMaintain && ['DRAFT', 'INACTIVE'].includes(row.status) && <Button type="link" size="small" disabled={busy}
@@ -139,6 +146,7 @@ export function SkuManagement({ spuId, initialKeyword = '', compact = false }: P
         onChange: (next, size) => { setPage(next); setPageSize(size); }, showTotal: (total) => `共 ${total} 个 SKU` }} />
     <SkuDraftForm open={formOpen} sku={editing} spuId={compact ? spuId : parent} onCancel={() => setFormOpen(false)} onSaved={onSaved} />
     <SkuHistoryPanel skuId={historyId} onClose={() => setHistoryId(null)} />
+    <SkuProductDetailsEditor skuId={productDataId} onClose={() => setProductDataId(null)} onSaved={onSaved} />
     <SkuMigrationPanel open={migrationOpen} issues={migration.data ?? []} onClose={() => setMigrationOpen(false)} />
     <Modal title="批量操作结果" open={outcomes !== null} onCancel={() => setOutcomes(null)} footer={null} width={760}>
       <Table<SkuBatchOutcome> rowKey="skuId" dataSource={outcomes ?? []} size="small" pagination={{ pageSize: 10 }} columns={[
@@ -148,10 +156,10 @@ export function SkuManagement({ spuId, initialKeyword = '', compact = false }: P
         { title: '说明', dataIndex: 'message' },
       ]} />
     </Modal>
-    <Modal title="SKU 详情" open={!!detailId} onCancel={() => setDetailId(null)} footer={null} width={680}>
+    <Modal title="SKU 详情" open={!!detailId} onCancel={() => setDetailId(null)} footer={null} width={1000} styles={{ body: { maxHeight: '75vh', overflowY: 'auto' } }}>
       {detail.isLoading && <Typography.Text>正在加载 SKU…</Typography.Text>}
       {detail.error && <Alert type="error" showIcon message="SKU 详情加载失败" />}
-      {detail.data && <Space direction="vertical" style={{ width: '100%' }}>
+      {detail.data && <Tabs items={[{ key: 'basic', label: '基础信息', children: <Space direction="vertical" style={{ width: '100%' }}>
         {!!detail.data.missingFields.length && <Alert type="warning" showIcon message={`基础资料待补齐：${detail.data.missingFields.join('、')}`} />}
         <Descriptions bordered column={1} size="small">
           <Descriptions.Item label="本地 SKU 编码"><Typography.Text copyable>{detail.data.sellerSku}</Typography.Text></Descriptions.Item>
@@ -162,11 +170,12 @@ export function SkuManagement({ spuId, initialKeyword = '', compact = false }: P
           <Descriptions.Item label="继承品牌">{brandName(detail.data.brandId)}</Descriptions.Item>
           <Descriptions.Item label="基本库存单位">{detail.data.baseUnit || '待补齐'}</Descriptions.Item>
           <Descriptions.Item label="规格组合">{specificationText(detail.data.specifications)}</Descriptions.Item>
-          <Descriptions.Item label="重量（kg）">{detail.data.weightKg ?? '未填写'}</Descriptions.Item>
-          <Descriptions.Item label="申报价值">{detail.data.declaredValue == null ? '未填写' : `${detail.data.declaredValue} ${detail.data.currency ?? ''}`}</Descriptions.Item>
+          <Descriptions.Item label="重量（kg）">{detail.data.details?.weightKg ?? '未填写'}</Descriptions.Item>
+          <Descriptions.Item label="申报价值">{detail.data.details?.declaredValue == null ? '未填写' : `${detail.data.details.declaredValue} ${detail.data.details.currency ?? ''}`}</Descriptions.Item>
           <Descriptions.Item label="状态">{skuStatusLabels[detail.data.status] ?? detail.data.status}</Descriptions.Item>
         </Descriptions>
-      </Space>}
+      </Space> }, { key: 'details', label: '商品资料', children: <SkuProductDetailsView data={detail.data.details} /> },
+      { key: 'usage', label: '使用检查', children: <SkuUsagePanel key={detail.data.skuId} skuId={detail.data.skuId} /> }]} />}
     </Modal>
   </Space>;
 

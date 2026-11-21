@@ -1,6 +1,7 @@
 package com.aidotnet.erp.tms.application;
 
 import com.aidotnet.erp.common.exception.BizException;
+import com.aidotnet.erp.common.pdm.SkuCatalog;
 import com.aidotnet.erp.tms.client.FmsClient;
 import com.aidotnet.erp.tms.domain.Carrier;
 import com.aidotnet.erp.tms.domain.CarrierRecommendation;
@@ -58,13 +59,15 @@ public class ShipmentService {
     private final ShipmentStore shipmentStore;
     private final FmsClient fmsClient;
     private final LogisticsStrategyService logisticsStrategyService;
+    private final SkuCatalog skuCatalog;
 
     public ShipmentService(ShipmentStore shipmentStore,
                            FmsClient fmsClient,
-                           LogisticsStrategyService logisticsStrategyService) {
+                           LogisticsStrategyService logisticsStrategyService, SkuCatalog skuCatalog) {
         this.shipmentStore = shipmentStore;
         this.fmsClient = fmsClient;
         this.logisticsStrategyService = logisticsStrategyService;
+        this.skuCatalog = skuCatalog;
     }
 
     @Transactional
@@ -240,6 +243,14 @@ public class ShipmentService {
     }
 
     public FreightEstimate estimateShippingRate(String tenantId, EstimateShippingRateCommand command) {
+        BigDecimal weight=command.weight();
+        if(command.items()!=null && !command.items().isEmpty()) {
+            if(weight!=null) throw new BizException("FREIGHT_WEIGHT_SOURCE_CONFLICT","请在实测重量和按商品资料取重之间选择一种方式");
+            if(command.items().stream().anyMatch(i -> i.quantity()<=0)) throw new BizException("QUANTITY_INVALID","试算数量必须为正整数");
+            var items=skuCatalog.requireUsageData(tenantId,command.items().stream().map(i -> new SkuCatalog.Selection(i.skuId(),i.sellerSku())).toList(),SkuCatalog.Usage.FREIGHT);
+            weight=BigDecimal.ZERO;
+            for(int i=0;i<items.size();i++) weight=weight.add(items.get(i).details().shippingWeightKg().multiply(BigDecimal.valueOf(command.items().get(i).quantity())));
+        }
         validateEstimateCommand(tenantId, command);
         LogisticsStrategyService.FreightQuote quote = logisticsStrategyService.estimateFreightQuote(
                 tenantId,
@@ -248,7 +259,7 @@ public class ShipmentService {
                         command.shippingMethodId(),
                         upperOrNull(command.originCountry()),
                         upperOrNull(command.destinationCountry()),
-                        command.weight(),
+                        weight,
                         command.volume()));
         if (quote == null) {
             throw new BizException("SHIPPING_RATE_NOT_FOUND", "No matching shipping rate found");
@@ -716,7 +727,12 @@ public class ShipmentService {
                                         Instant estimatedDelivery) {}
 
     public record EstimateShippingRateCommand(String carrierId, String shippingMethodId, String originCountry,
-                                              String destinationCountry, BigDecimal weight, BigDecimal volume) {}
+                                              String destinationCountry, BigDecimal weight, BigDecimal volume, List<ProductQuantity> items) {
+        public EstimateShippingRateCommand(String carrierId,String shippingMethodId,String originCountry,String destinationCountry,BigDecimal weight,BigDecimal volume) {
+            this(carrierId,shippingMethodId,originCountry,destinationCountry,weight,volume,List.of());
+        }
+    }
+    public record ProductQuantity(String skuId,String sellerSku,int quantity) {}
 
     public record AddTrackingCommand(String status, String location, String description) {}
 
