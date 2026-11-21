@@ -1,4 +1,5 @@
 import { del, get, post, put } from '@/lib/api/client';
+import type { SpecificationItem, SpecificationSelection } from './pdm-specification';
 
 export const skuPath = '/pdm/api/in/v1/skus';
 export const spuPath = '/pdm/api/in/v1/products';
@@ -23,6 +24,7 @@ export interface SkuRecord {
 }
 
 export interface SkuDraft extends SkuRecord {
+  specifications: SpecificationItem[];
   spuCode: string | null;
   spuTitle: string | null;
   categoryId: string | null;
@@ -50,6 +52,7 @@ export interface NewSpuDraft {
 }
 
 export interface CreateSkuDraft {
+  specifications?: SpecificationSelection[];
   spuId?: string;
   sellerSku?: string;
   title?: string;

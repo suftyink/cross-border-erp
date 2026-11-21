@@ -5,6 +5,7 @@ import { isAxiosError } from 'axios';
 import { Alert, Button, Descriptions, Form, Input, Modal, Radio, Select, Space, Typography, message } from 'antd';
 import { useApi } from '@/lib/hooks';
 import { skuDraftApi, spuPath, type CreateSkuDraft, type SkuDraft, type SpuOption } from '@/lib/pdm-sku';
+import { SkuSpecificationPicker } from './sku-specification-picker';
 
 type FormValues = CreateSkuDraft & { mode: 'EXISTING' | 'NEW' };
 
@@ -33,7 +34,7 @@ export function SkuDraftForm({ open, sku, spuId, onCancel, onSaved }: Props) {
     if (!open) return;
     form.resetFields();
     form.setFieldsValue({ mode: 'EXISTING', spuId: sku?.spuId ?? spuId, sellerSku: sku?.sellerSku,
-      title: sku?.title ?? '', baseUnit: sku?.baseUnit ?? (sku ? undefined : '件') });
+      title: sku?.title ?? '', baseUnit: sku?.baseUnit ?? (sku ? undefined : '件'), specifications: sku?.specifications?.map(({ attributeId, valueId }) => ({ attributeId, valueId })) ?? [] });
     setError(null);
   }, [open, sku, spuId, form]);
 
@@ -55,9 +56,10 @@ export function SkuDraftForm({ open, sku, spuId, onCancel, onSaved }: Props) {
     try {
       if (sku) {
         await skuDraftApi.update(sku.skuId, { title: values.title ?? '', baseUnit: values.baseUnit ?? '',
-          sellerSku: values.sellerSku, spuId: values.spuId }, enable);
+          sellerSku: values.sellerSku, spuId: values.spuId,
+          ...(sku.identityEditable ? { specifications: values.specifications } : {}) }, enable);
       } else {
-        await skuDraftApi.create({ sellerSku: values.sellerSku, title: values.title, baseUnit: values.baseUnit,
+        await skuDraftApi.create({ sellerSku: values.sellerSku, title: values.title, baseUnit: values.baseUnit, specifications: values.mode === 'NEW' ? [] : values.specifications,
           ...(values.mode === 'NEW' ? { newSpu: values.newSpu ?? {} } : { spuId: values.spuId }) }, enable);
       }
       message.success(enable ? 'SKU 已保存并启用' : sku ? 'SKU 资料已更新' : 'SKU 草稿已创建');
@@ -66,9 +68,12 @@ export function SkuDraftForm({ open, sku, spuId, onCancel, onSaved }: Props) {
     } catch (failure) {
       const text = isAxiosError<{ message?: string; code?: string }>(failure)
         ? failure.response?.data.message ?? '保存失败，请重试' : '保存失败，请重试';
+      const code = isAxiosError<{ code?: string }>(failure) ? failure.response?.data.code : undefined;
       setError(text);
-      if (isAxiosError<{ code?: string }>(failure) && failure.response?.data.code === 'SKU_DUPLICATED') {
+      if (code === 'SKU_DUPLICATED') {
         form.setFields([{ name: 'sellerSku', errors: [text] }]);
+      } else if (code && ['SPEC_COMBINATION_DUPLICATED', 'SPEC_COMBINATION_INCOMPLETE', 'SPEC_VALUE_NOT_ALLOWED', 'SPEC_ATTRIBUTE_DUPLICATED'].includes(code)) {
+        form.setFields([{ name: 'specifications', errors: [text] }]);
       }
     } finally { setSaving(false); }
   };
@@ -82,10 +87,10 @@ export function SkuDraftForm({ open, sku, spuId, onCancel, onSaved }: Props) {
         {(!sku || sku.status !== 'ACTIVE') && <Button disabled={saving || generating || dictionariesFailed}
           onClick={() => void submit(true)}>保存并启用</Button>}<OkBtn /></Space>}>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        <Typography.Text type="secondary">草稿可先保存，启用前需补齐名称、分类和基本库存单位。</Typography.Text>
+        <Typography.Text type="secondary">草稿可先保存，启用前需补齐名称、分类、基本库存单位及多规格组合。</Typography.Text>
         {sku?.identityLocked && <Alert type="info" showIcon message={sku.historyReviewRequired
-          ? '历史身份需要核实，编码、归属与库存单位保持锁定；可维护描述资料。'
-          : '商品曾启用或被引用，编码、归属与库存单位永久锁定；停用后仍保留锁定。'} />}
+          ? '历史身份需要核实，编码、归属、规格组合与库存单位保持锁定；可维护描述资料。'
+          : '商品曾启用或被引用，编码、归属、规格组合与库存单位永久锁定；停用后仍保留锁定。'} />}
         {error && <Alert type="error" showIcon message={error} />}
         {dictionariesFailed && <Alert type="error" showIcon message="商品或字典加载失败"
           action={<Button size="small" onClick={() => { void products.mutate(); void categories.mutate(); void brands.mutate(); }}>重试</Button>} />}
@@ -96,6 +101,7 @@ export function SkuDraftForm({ open, sku, spuId, onCancel, onSaved }: Props) {
           {(sku || spuId || mode !== 'NEW') ? <>
             <Form.Item name="spuId" label="所属 SPU" rules={[{ required: true, message: '请选择所属 SPU' }]}>
               <Select showSearch optionFilterProp="label" disabled={sku ? !sku.identityEditable : !!spuId} loading={products.isLoading}
+                onChange={() => form.setFieldsValue({ specifications: [] })}
                 options={products.data?.map((item) => ({ value: item.spuId, label: `${item.sku ?? '未编码'} · ${item.title ?? '待补名称'}` }))} />
             </Form.Item>
             {parent && <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
@@ -124,6 +130,9 @@ export function SkuDraftForm({ open, sku, spuId, onCancel, onSaved }: Props) {
           <Form.Item name="title" label="SKU 名称" rules={[{ max: 512 }]}><Input maxLength={512} /></Form.Item>
           <Form.Item name="baseUnit" label="基本库存单位" extra="按整数记库存，箱规不自动换算数量。">
             <Select allowClear disabled={!!sku && !sku.identityEditable} options={['件', '个', '套', '台', '支', '包'].map((value) => ({ value, label: value }))} />
+          </Form.Item>
+          <Form.Item name="specifications" label="规格组合">
+            <SkuSpecificationPicker spuId={mode === 'NEW' && !sku ? undefined : selectedSpu} disabled={saving || (!!sku && !sku.identityEditable)} />
           </Form.Item>
         </Form>
       </Space>

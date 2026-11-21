@@ -3,13 +3,27 @@
 import { Alert, Modal, Table, Typography } from 'antd';
 import { useApi } from '@/lib/hooks';
 import { skuPath, type SkuHistoryEntry, type SkuMigrationIssue } from '@/lib/pdm-sku';
+import { specificationText, type SpecificationItem } from '@/lib/pdm-specification';
 
-const actionNames: Record<string, string> = { CREATE: '新增', UPDATE: '修改资料', ENABLE: '启用', DISABLE: '停用', DELETE: '删除草稿', MIGRATE_EVIDENCE: '历史证据记录' };
-const fieldNames: Record<string, string> = { sellerSku: '本地编码', spuId: '所属 SPU', title: '名称', baseUnit: '基本单位', status: '状态' };
+const actionNames: Record<string, string> = { CREATE: '新增', UPDATE: '修改资料', ENABLE: '启用', DISABLE: '停用', DELETE: '删除草稿', SPECIFICATION: '修改规格', MIGRATE_EVIDENCE: '历史证据记录' };
+const fieldNames: Record<string, string> = { sellerSku: '本地编码', spuId: '所属 SPU', title: '名称', baseUnit: '基本单位', status: '状态', specifications: '规格组合' };
+const format = (field: string, value: unknown) =>
+  field === 'specifications' ? specificationText(Array.isArray(value) ? (value as SpecificationItem[]) : undefined) : String(value ?? '—');
+
+function fieldChanged(field: string, before: unknown, after: unknown) {
+  if (field === 'specifications') {
+    const left = Array.isArray(before) ? before : [];
+    const right = Array.isArray(after) ? after : [];
+    return JSON.stringify(left) !== JSON.stringify(right);
+  }
+  return JSON.stringify(before ?? null) !== JSON.stringify(after ?? null);
+}
 
 function changes(entry: SkuHistoryEntry) {
-  return Object.entries(fieldNames).filter(([field]) => entry.before?.[field] !== entry.after?.[field])
-    .map(([field, label]) => `${label}：${String(entry.before?.[field] ?? '—')} → ${String(entry.after?.[field] ?? '—')}`).join('；') || '记录历史身份事实';
+  return Object.entries(fieldNames)
+    .filter(([field]) => fieldChanged(field, entry.before?.[field], entry.after?.[field]))
+    .map(([field, label]) => `${label}：${format(field, entry.before?.[field])} → ${format(field, entry.after?.[field])}`)
+    .join('；') || '记录历史身份事实';
 }
 
 export function SkuHistoryPanel({ skuId, onClose }: { skuId: string | null; onClose: () => void }) {

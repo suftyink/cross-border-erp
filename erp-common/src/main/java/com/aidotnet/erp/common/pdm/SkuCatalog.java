@@ -12,6 +12,7 @@ public interface SkuCatalog {
 
     record Selection(String skuId, String sellerSku) {}
     record Item(String skuId, String spuId, String sellerSku, String title, String baseUnit, String status,
-                BigDecimal weightKg, BigDecimal declaredValue, String currency) {}
+                BigDecimal weightKg, BigDecimal declaredValue, String currency, List<Specification> specifications) {}
+    record Specification(String attributeId,String attributeCode,String attributeName,String valueId,String valueCode,String valueName) {}
     record Check(Selection selection, boolean valid, String code, String message, List<String> missingFields, Item item) {}
 }

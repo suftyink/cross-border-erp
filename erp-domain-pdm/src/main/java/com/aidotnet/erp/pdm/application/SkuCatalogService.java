@@ -21,12 +21,14 @@ public class SkuCatalogService implements SkuCatalog {
     private final SkuLifecycleService lifecycle;
     private final SkuIdentityPolicy policy;
     private final SkuIdentityStore identities;
+    private final SkuSpecificationService specifications;
 
-    public SkuCatalogService(ProductStore products, SkuLifecycleService lifecycle, SkuIdentityPolicy policy, SkuIdentityStore identities) {
+    public SkuCatalogService(ProductStore products, SkuLifecycleService lifecycle, SkuIdentityPolicy policy, SkuIdentityStore identities, SkuSpecificationService specifications) {
         this.products = products;
         this.lifecycle = lifecycle;
         this.policy = policy;
         this.identities = identities;
+        this.specifications = specifications;
     }
 
     @Override
@@ -60,6 +62,7 @@ public class SkuCatalogService implements SkuCatalog {
     @Override
     @Transactional
     public List<Item> requireActive(String tenantId, Collection<Selection> selections) {
+        specifications.lock(tenantId);
         List<Check> checks = validate(tenantId, selections);
         for (Check check : checks) if (!check.valid()) throw new BizException(check.code(), check.message());
         List<Item> items = checks.stream().map(Check::item).toList();
@@ -98,7 +101,8 @@ public class SkuCatalogService implements SkuCatalog {
     }
 
     private Item item(Sku sku) {
-        return new Item(sku.skuId(), sku.spuId(), sku.sellerSku(), sku.title(), sku.baseUnit(), sku.status().name(), sku.weightKg(), sku.declaredValue(), sku.currency());
+        return new Item(sku.skuId(), sku.spuId(), sku.sellerSku(), sku.title(), sku.baseUnit(), sku.status().name(), sku.weightKg(), sku.declaredValue(), sku.currency(),
+                specifications.items(sku.tenantId(),sku.skuId()).stream().map(i -> new SkuCatalog.Specification(i.attributeId(),i.attributeCode(),i.attributeName(),i.valueId(),i.valueCode(),i.valueName())).toList());
     }
 
     private Check failed(Selection selection, String code, String message) { return new Check(selection, false, code, message, List.of(), null); }

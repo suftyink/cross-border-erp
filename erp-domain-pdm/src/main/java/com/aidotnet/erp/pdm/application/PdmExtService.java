@@ -41,15 +41,17 @@ public class PdmExtService {
 
     private final PdmExtStore extStore;
     private final SkuVariantBridge skuBridge;
+    private final SkuSpecificationService specifications;
 
     /**
      * 构造函数 - 依赖注入扩展数据存储
      *
      * @param extStore PDM扩展数据存储
      */
-    public PdmExtService(PdmExtStore extStore, SkuVariantBridge skuBridge) {
+    public PdmExtService(PdmExtStore extStore, SkuVariantBridge skuBridge, SkuSpecificationService specifications) {
         this.extStore = extStore;
         this.skuBridge = skuBridge;
+        this.specifications = specifications;
     }
 
     /** 创建知识产权记录 */
@@ -138,13 +140,17 @@ public class PdmExtService {
     /** 创建产品变体(初始状态为DRAFT) */
     @Transactional
     public ProductVariant createProductVariant(String tenantId, CreateVariantCommand command) {
+        if (command.variantAttributes() != null
+                && !java.util.Set.of("", "{}", "[]", "null").contains(command.variantAttributes().strip().toLowerCase(java.util.Locale.ROOT))) {
+            throw new BizException("STRUCTURED_SPEC_REQUIRED", "请使用 SKU 结构化规格入口，不能保存自由文本规格");
+        }
         var sku = skuBridge.bind(tenantId, command.spuId(), command.sellerSku(), command.variantName(), command.baseUnit());
         Instant now = Instant.now();
         ProductVariant variant = new ProductVariant(UUID.randomUUID().toString(), tenantId, command.spuId(),
                 command.variantName(), command.variantAttributes(), command.purchaseCost(), command.sellingPrice(),
                 command.priceAdjustment(), sku.sellerSku(), command.images(),
                 sku.status(), now, now, sku.skuId());
-        return extStore.saveProductVariant(variant);
+        return displayVariant(extStore.saveProductVariant(variant));
     }
 
     /** 激活产品变体(草稿→上架) */
@@ -157,13 +163,19 @@ public class PdmExtService {
 
     /** 按SPU查询产品变体列表 */
     public List<ProductVariant> listProductVariantsBySpu(String tenantId, String spuId) {
-        return extStore.listProductVariantsBySpu(tenantId, spuId);
+        return extStore.listProductVariantsBySpu(tenantId, spuId).stream().map(this::displayVariant).toList();
     }
 
     /** 查询产品变体详情，不存在则抛出异常 */
     public ProductVariant getProductVariant(String tenantId, String variantId) {
-        return extStore.findProductVariant(tenantId, variantId)
+        return extStore.findProductVariant(tenantId, variantId).map(this::displayVariant)
                 .orElseThrow(() -> new BizException("VARIANT_NOT_FOUND", "产品变体不存在"));
+    }
+
+    private ProductVariant displayVariant(ProductVariant variant) {
+        var items=variant.skuId()==null?java.util.List.<com.aidotnet.erp.pdm.domain.Specification.Item>of():specifications.items(variant.tenantId(),variant.skuId());
+        return new ProductVariant(variant.variantId(),variant.tenantId(),variant.spuId(),variant.variantName(),variant.variantAttributes(),
+                variant.purchaseCost(),variant.sellingPrice(),variant.priceAdjustment(),variant.sellerSku(),variant.images(),variant.status(),variant.createdAt(),variant.updatedAt(),variant.skuId(),items);
     }
 
     /** 创建产品采集记录(初始状态为COLLECTED) */

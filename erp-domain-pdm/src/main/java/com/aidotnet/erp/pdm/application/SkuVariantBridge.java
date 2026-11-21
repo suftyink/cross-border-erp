@@ -17,18 +17,21 @@ public class SkuVariantBridge {
     private final SkuIdentityPolicy policy;
     private final SkuIdentityStore identities;
     private final SkuLifecycleService lifecycle;
+    private final SkuSpecificationService specifications;
 
     public SkuVariantBridge(ProductStore products, SkuDraftService drafts, SkuIdentityPolicy policy,
-                            SkuIdentityStore identities, SkuLifecycleService lifecycle) {
+                            SkuIdentityStore identities, SkuLifecycleService lifecycle, SkuSpecificationService specifications) {
         this.products = products;
         this.drafts = drafts;
         this.policy = policy;
         this.identities = identities;
         this.lifecycle = lifecycle;
+        this.specifications = specifications;
     }
 
     @Transactional
     public Sku bind(String tenant, String spuId, String code, String title, String unit) {
+        specifications.lock(tenant);
         products.lockSpu(tenant, spuId).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
         String localCode = code == null || code.isBlank() ? SkuCode.generate() : SkuCode.normalize(code);
         Sku sku = products.findSkuBySellerSku(tenant, localCode).orElse(null);

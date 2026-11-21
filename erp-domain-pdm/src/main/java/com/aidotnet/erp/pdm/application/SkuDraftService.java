@@ -28,14 +28,16 @@ public class SkuDraftService {
     private final SkuLifecycleService lifecycle;
     private final SkuIdentityPolicy identities;
     private final SkuHistoryStore history;
+    private final SkuSpecificationService specifications;
 
     public SkuDraftService(ProductStore store, ProductService products, SkuLifecycleService lifecycle,
-                           SkuIdentityPolicy identities, SkuHistoryStore history) {
+                           SkuIdentityPolicy identities, SkuHistoryStore history, SkuSpecificationService specifications) {
         this.store = store;
         this.products = products;
         this.lifecycle = lifecycle;
         this.identities = identities;
         this.history = history;
+        this.specifications = specifications;
     }
 
     @Transactional
@@ -56,8 +58,8 @@ public class SkuDraftService {
         String code = clean(command.sellerSku());
         if (code == null) code = SkuCode.generate();
         Sku sku = products.createSku(tenant, spuId, new ProductService.CreateSkuCommand(code,
-                clean(command.title()), null, null, null, clean(command.baseUnit())));
-        history.append(tenant, sku.skuId(), "CREATE", null, sku, null);
+                clean(command.title()), null, null, null, clean(command.baseUnit()), command.specifications()), false);
+        history.appendCreate(tenant, sku.skuId(), sku, specifications.items(tenant, sku.skuId()));
         return view(sku, products.getSpu(tenant, spuId));
     }
 
@@ -84,6 +86,7 @@ public class SkuDraftService {
 
     @Transactional
     public SkuDraftView update(String tenant, String skuId, UpdateDraft command) {
+        specifications.lock(tenant);
         Sku observed = requireSku(tenant, skuId);
         String parentId = command.spuId() == null ? observed.spuId() : clean(command.spuId());
         if (parentId == null) throw new BizException("SKU_SPU_REQUIRED", "所属 SPU 不能为空");
@@ -105,10 +108,20 @@ public class SkuDraftService {
         Sku updated = new Sku(sku.skuId(), tenant, parentId, code,
                 command.title() == null ? sku.title() : clean(command.title()), unit,
                 sku.weightKg(), sku.declaredValue(), sku.currency(), sku.status(), sku.createdAt(), Instant.now(), sku.everEnabled(), sku.identityLocked());
+        boolean coreChanged = !Objects.equals(sku.spuId(), updated.spuId())
+                || !Objects.equals(sku.sellerSku(), updated.sellerSku())
+                || !Objects.equals(sku.title(), updated.title())
+                || !Objects.equals(sku.baseUnit(), updated.baseUnit());
         identities.rename(sku, updated);
+        if (!parentId.equals(sku.spuId())) {
+            specifications.releaseKey(tenant, skuId);
+        }
         store.saveSku(updated);
+        if (coreChanged) {
+            history.append(tenant, skuId, "UPDATE", sku, updated, null);
+        }
+        specifications.assign(updated, command.specifications(), true);
         identities.syncVariants(updated);
-        history.append(tenant, skuId, "UPDATE", sku, updated, null);
         return view(updated, products.getSpu(tenant, updated.spuId()));
     }
 
@@ -151,7 +164,8 @@ public class SkuDraftService {
                 sku.weightKg(), sku.declaredValue(), sku.currency(),
                 sku.status() == ProductStatus.DRAFT || sku.status() == ProductStatus.ACTIVE || sku.status() == ProductStatus.INACTIVE,
                 List.copyOf(missing), sku.createdAt(), sku.updatedAt(), sku.everEnabled(), !identityEditable,
-                identityEditable, identityEditable, sku.everEnabled() == null);
+                identityEditable, identityEditable, sku.everEnabled() == null || specifications.needsReview(sku.tenantId(),sku.skuId()),
+                specifications.items(sku.tenantId(),sku.skuId()));
     }
 
     private static String clean(String value) {
@@ -159,12 +173,16 @@ public class SkuDraftService {
     }
 
     public record NewSpu(String sku, String title, String description, String categoryId, String brandId) {}
-    public record CreateDraft(String spuId, String sellerSku, String title, String baseUnit, NewSpu newSpu) {}
-    public record UpdateDraft(String title, String baseUnit, String sellerSku, String spuId) {}
+    public record CreateDraft(String spuId, String sellerSku, String title, String baseUnit, NewSpu newSpu, List<com.aidotnet.erp.pdm.domain.Specification.Selection> specifications) {
+        public CreateDraft(String spuId,String sellerSku,String title,String baseUnit,NewSpu newSpu) { this(spuId,sellerSku,title,baseUnit,newSpu,null); }
+    }
+    public record UpdateDraft(String title, String baseUnit, String sellerSku, String spuId, List<com.aidotnet.erp.pdm.domain.Specification.Selection> specifications) {
+        public UpdateDraft(String title,String baseUnit,String sellerSku,String spuId) { this(title,baseUnit,sellerSku,spuId,null); }
+    }
     public record SkuDraftView(String skuId, String spuId, String sellerSku, String title, String baseUnit,
                                ProductStatus status, String spuCode, String spuTitle, String categoryId, String brandId,
                                BigDecimal weightKg, BigDecimal declaredValue, String currency,
                                boolean editable, List<String> missingFields, Instant createdAt, Instant updatedAt,
                                Boolean everEnabled, boolean identityLocked, boolean identityEditable, boolean deletable,
-                               boolean historyReviewRequired) {}
+                               boolean historyReviewRequired, List<com.aidotnet.erp.pdm.domain.Specification.Item> specifications) {}
 }

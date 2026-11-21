@@ -21,6 +21,7 @@ import com.aidotnet.erp.pdm.domain.ProductDevelopment;
 import com.aidotnet.erp.pdm.domain.ProposalStatus;
 import com.aidotnet.erp.pdm.domain.SelectionProposal;
 import com.aidotnet.erp.pdm.domain.Sku;
+import com.aidotnet.erp.pdm.domain.Specification.Selection;
 import com.aidotnet.erp.pdm.domain.Spu;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -138,7 +139,7 @@ public class ProductController {
     @RequirePermission("pdm:product:write")
     public Result<Sku> createSku(@PathVariable String spuId, @Valid @RequestBody CreateSkuRequest request) {
         return Result.ok(productService.createSku(currentTenant(), spuId, new CreateSkuCommand(request.sellerSku(), request.title(),
-                request.weightKg(), request.declaredValue(), request.currency(), request.baseUnit())));
+                request.weightKg(), request.declaredValue(), request.currency(), request.baseUnit(), request.specifications())));
     }
 
     /** 查询SKU列表 */
@@ -250,7 +251,7 @@ public class ProductController {
     public record UpdateIpStatusRequest(@NotBlank String ipStatus) {}
     public record CreateSkuRequest(@NotBlank @Size(max = 128) String sellerSku, @Size(max = 512) String title,
                                    @Positive BigDecimal weightKg, @Positive BigDecimal declaredValue,
-                                   @Size(max = 8) String currency, @Size(max = 32) String baseUnit) {}
+                                   @Size(max = 8) String currency, @Size(max = 32) String baseUnit, @Size(max=20) List<@jakarta.validation.constraints.NotNull @Valid Selection> specifications) {}
     public record CreateProposalRequest(String productName, @NotBlank String title, String categoryId, String source,
                                         String sourceReference, BigDecimal estimatedCost, String marketAnalysis,
                                         String profitEstimation, String riskAssessment, boolean aiSuggested) {}

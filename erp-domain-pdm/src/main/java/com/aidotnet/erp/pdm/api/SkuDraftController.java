@@ -9,6 +9,7 @@ import com.aidotnet.erp.common.tenant.TenantContext;
 import com.aidotnet.erp.pdm.application.SkuDraftService;
 import com.aidotnet.erp.pdm.application.SkuDraftService.SkuDraftView;
 import com.aidotnet.erp.pdm.domain.SkuCode;
+import com.aidotnet.erp.pdm.domain.Specification.Selection;
 import com.aidotnet.erp.pdm.application.SkuLifecycleService;
 import com.aidotnet.erp.pdm.application.SkuBatchService;
 import com.aidotnet.erp.pdm.infrastructure.SkuHistoryStore;
@@ -87,14 +88,14 @@ public class SkuDraftController {
         NewSpuRequest parent = request.newSpu();
         return Result.ok(drafts.create(currentTenant(), new SkuDraftService.CreateDraft(request.spuId(),
                 request.sellerSku(), request.title(), request.baseUnit(), parent == null ? null
-                : new SkuDraftService.NewSpu(parent.sku(), parent.title(), parent.description(), parent.categoryId(), parent.brandId()))));
+                : new SkuDraftService.NewSpu(parent.sku(), parent.title(), parent.description(), parent.categoryId(), parent.brandId()), request.specifications())));
     }
 
     @PutMapping("/{skuId}")
     @RequirePermission("pdm:product:write")
     public Result<SkuDraftView> update(@PathVariable String skuId, @Valid @RequestBody UpdateDraftRequest request) {
         return Result.ok(drafts.update(currentTenant(), skuId, new SkuDraftService.UpdateDraft(
-                request.title(), request.baseUnit(), request.sellerSku(), request.spuId())));
+                request.title(), request.baseUnit(), request.sellerSku(), request.spuId(), request.specifications())));
     }
 
     @PostMapping("/{skuId}/enable")
@@ -139,14 +140,14 @@ public class SkuDraftController {
         NewSpuRequest parent = request.newSpu();
         return Result.ok(drafts.createAndEnable(currentTenant(), new SkuDraftService.CreateDraft(request.spuId(), request.sellerSku(),
                 request.title(), request.baseUnit(), parent == null ? null : new SkuDraftService.NewSpu(parent.sku(), parent.title(),
-                parent.description(), parent.categoryId(), parent.brandId()))));
+                parent.description(), parent.categoryId(), parent.brandId()), request.specifications())));
     }
 
     @PutMapping("/{skuId}/save-and-enable")
     @RequirePermission("pdm:product:write")
     public Result<SkuDraftView> updateAndEnable(@PathVariable String skuId, @Valid @RequestBody UpdateDraftRequest request) {
         return Result.ok(drafts.updateAndEnable(currentTenant(), skuId, new SkuDraftService.UpdateDraft(
-                request.title(), request.baseUnit(), request.sellerSku(), request.spuId())));
+                request.title(), request.baseUnit(), request.sellerSku(), request.spuId(), request.specifications())));
     }
 
     @GetMapping("/{skuId}/history")
@@ -163,11 +164,11 @@ public class SkuDraftController {
 
     public record CreateDraftRequest(@Size(max = 64) String spuId, @Size(max = 128) String sellerSku,
                                       @Size(max = 512) String title, @Size(max = 32) String baseUnit,
-                                      @Valid NewSpuRequest newSpu) {}
+                                      @Valid NewSpuRequest newSpu, @Size(max=20) List<@NotNull @Valid Selection> specifications) {}
     public record NewSpuRequest(@Size(max = 128) String sku, @Size(max = 512) String title,
                                 String description, @Size(max = 64) String categoryId, @Size(max = 64) String brandId) {}
     public record UpdateDraftRequest(@Size(max = 512) String title, @Size(max = 32) String baseUnit,
-                                      @Size(max = 128) String sellerSku, @Size(max = 64) String spuId) {}
+                                      @Size(max = 128) String sellerSku, @Size(max = 64) String spuId, @Size(max=20) List<@NotNull @Valid Selection> specifications) {}
     public record SkuAccess(boolean canMaintain) {}
     public record SelectionRequest(@Size(max = 64) String skuId, @Size(max = 128) String sellerSku) {}
     public record ValidateRequest(@NotEmpty @Size(max = 200) List<@NotNull @Valid SelectionRequest> selections) {}

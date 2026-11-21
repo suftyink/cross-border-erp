@@ -62,6 +62,7 @@ public class ProductService {
     private final ProductStore productStore;
     private final DomainEventPublisher eventPublisher;
     private final SkuIdentityPolicy skuIdentities;
+    private final SkuSpecificationService specifications;
 
     /**
      * 构造函数 - 依赖注入产品存储和事件发布器
@@ -69,10 +70,11 @@ public class ProductService {
      * @param productStore   产品数据存储
      * @param eventPublisher 领域事件发布器
      */
-    public ProductService(ProductStore productStore, DomainEventPublisher eventPublisher, SkuIdentityPolicy skuIdentities) {
+    public ProductService(ProductStore productStore, DomainEventPublisher eventPublisher, SkuIdentityPolicy skuIdentities, SkuSpecificationService specifications) {
         this.productStore = productStore;
         this.eventPublisher = eventPublisher;
         this.skuIdentities = skuIdentities;
+        this.specifications = specifications;
     }
 
     /**
@@ -143,18 +145,27 @@ public class ProductService {
 
     @Transactional
     public Sku createSku(String tenantId, String spuId, CreateSkuCommand command) {
-        productStore.findSpu(tenantId, spuId).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
+        return createSku(tenantId, spuId, command, true);
+    }
+
+    @Transactional
+    Sku createSku(String tenantId, String spuId, CreateSkuCommand command, boolean recordSpecificationHistory) {
+        specifications.lock(tenantId);
+        productStore.lockSpu(tenantId, spuId).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
         String code = SkuCode.normalize(command.sellerSku());
         String skuId = UUID.randomUUID().toString();
         boolean referenced = skuIdentities.claimNew(tenantId, skuId, code);
         Instant now = Instant.now();
+        Sku created;
         try {
-            return productStore.saveSku(new Sku(skuId, tenantId, spuId, code,
+            created = productStore.saveSku(new Sku(skuId, tenantId, spuId, code,
                     command.title(), command.baseUnit(), command.weightKg(), command.declaredValue(), command.currency(),
                     ProductStatus.DRAFT, now, now, false, referenced));
         } catch (DuplicateKeyException ex) {
             throw new BizException("SKU_DUPLICATED", "SKU已存在");
         }
+        specifications.assign(created, command.specifications(), recordSpecificationHistory);
+        return created;
     }
 
     private static String optionalIdentifier(String value) {
@@ -420,7 +431,10 @@ public class ProductService {
     public record UpdateSpuCommand(String sku, String title, String description, String categoryId, String brandId) {}
 
     public record CreateSkuCommand(String sellerSku, String title, BigDecimal weightKg, BigDecimal declaredValue,
-                                   String currency, String baseUnit) {
+                                   String currency, String baseUnit, java.util.List<com.aidotnet.erp.pdm.domain.Specification.Selection> specifications) {
+        public CreateSkuCommand(String sellerSku, String title, BigDecimal weightKg, BigDecimal declaredValue, String currency, String baseUnit) {
+            this(sellerSku,title,weightKg,declaredValue,currency,baseUnit,null);
+        }
         public CreateSkuCommand(String sellerSku, String title, BigDecimal weightKg, BigDecimal declaredValue, String currency) {
             this(sellerSku, title, weightKg, declaredValue, currency, null);
         }

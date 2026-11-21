@@ -48,8 +48,13 @@ public record ProductVariant(
         ProductStatus status,
         Instant createdAt,
         Instant updatedAt,
-        String skuId
+        String skuId, List<Specification.Item> specifications
 ) {
+    public ProductVariant(String variantId, String tenantId, String spuId, String variantName, String variantAttributes,
+                          BigDecimal purchaseCost, BigDecimal sellingPrice, BigDecimal priceAdjustment, String sellerSku,
+                          List<String> images, ProductStatus status, Instant createdAt, Instant updatedAt, String skuId) {
+        this(variantId,tenantId,spuId,variantName,variantAttributes,purchaseCost,sellingPrice,priceAdjustment,sellerSku,images,status,createdAt,updatedAt,skuId,List.of());
+    }
     public ProductVariant(String variantId, String tenantId, String spuId, String variantName, String variantAttributes,
                           BigDecimal purchaseCost, BigDecimal sellingPrice, BigDecimal priceAdjustment, String sellerSku,
                           List<String> images, ProductStatus status, Instant createdAt, Instant updatedAt) {

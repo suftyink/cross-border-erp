@@ -7,6 +7,7 @@ import { PlusOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons';
 import { useApi } from '@/lib/hooks';
 import { post, put } from '@/lib/api/client';
 import { SkuManagement } from '@/components/pdm/sku-management';
+import { SpuSpecifications } from '@/components/pdm/spu-specifications';
 import { skuPath, type SpuOption as Product, type SkuRecord } from '@/lib/pdm-sku';
 import { mutate as mutateCache } from 'swr';
 
@@ -35,7 +36,7 @@ function ProductsContent() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [modalOpen, setModalOpen] = useState(false);
-  const [detailId, setDetailId] = useState(sourceProductId);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form] = Form.useForm<Pick<Product, 'sku' | 'title' | 'description' | 'categoryId' | 'brandId'>>();
   const products = useApi<Product[]>(productPath);
@@ -126,9 +127,10 @@ function ProductsContent() {
               <Descriptions.Item label="产品名称">{currentProduct.title}</Descriptions.Item>
               <Descriptions.Item label="分类"><Tag>{categoryNames.get(currentProduct.categoryId ?? '') ?? '—'}</Tag></Descriptions.Item>
               <Descriptions.Item label="品牌">{brandNames.get(currentProduct.brandId ?? '') ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="状态"><Badge color={currentProduct.status === 'ACTIVE' ? 'green' : 'default'} text={currentProduct.status} /></Descriptions.Item>
+              <Descriptions.Item label="状态" span={2}><Badge color={currentProduct.status === 'ACTIVE' ? 'green' : 'default'} text={currentProduct.status} /></Descriptions.Item>
               <Descriptions.Item label="产品描述" span={2}>{currentProduct.description || '—'}</Descriptions.Item>
             </Descriptions>
+            <SpuSpecifications spuId={currentProduct.spuId} canMaintain={canMaintain} />
             <SkuManagement spuId={currentProduct.spuId} compact />
           </div>
         )}

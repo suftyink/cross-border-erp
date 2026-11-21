@@ -17,11 +17,13 @@ public class SkuLifecycleService {
     private final ProductStore store;
     private final SkuIdentityPolicy identities;
     private final SkuHistoryStore history;
+    private final SkuSpecificationService specifications;
 
-    public SkuLifecycleService(ProductStore store, SkuIdentityPolicy identities, SkuHistoryStore history) {
+    public SkuLifecycleService(ProductStore store, SkuIdentityPolicy identities, SkuHistoryStore history, SkuSpecificationService specifications) {
         this.store = store;
         this.identities = identities;
         this.history = history;
+        this.specifications = specifications;
     }
 
     @Transactional
@@ -31,6 +33,7 @@ public class SkuLifecycleService {
 
     @Transactional
     public Sku enable(String tenant, String skuId, String reason) {
+        specifications.lock(tenant);
         Sku observed = store.findSku(tenant, skuId).orElseThrow(() -> new BizException("SKU_NOT_FOUND", "SKU 不存在"));
         store.lockSpu(tenant, observed.spuId()).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
         Sku sku = identities.lock(tenant, skuId, null);
@@ -79,11 +82,13 @@ public class SkuLifecycleService {
         if (parent == null) missing.add("所属 SPU");
         else if (parent.categoryId() == null || store.findCategory(sku.tenantId(), parent.categoryId()).isEmpty()) missing.add("有效 SPU 分类");
         if (parent != null && parent.brandId() != null && !parent.brandId().isBlank() && store.findBrand(sku.tenantId(), parent.brandId()).isEmpty()) missing.add("有效 SPU 品牌");
+        missing.addAll(specifications.missing(sku));
         return List.copyOf(missing);
     }
 
     @Transactional
     public void delete(String tenant, String skuId) {
+        specifications.lock(tenant);
         Sku sku = identities.lock(tenant, skuId, null);
         if (identities.referenced(sku)) throw new BizException("SKU_REFERENCED", "商品曾被业务引用，不能删除");
         if (!identities.editableIdentity(sku)) throw new BizException("SKU_DELETE_FORBIDDEN", "只有从未启用且无引用的草稿可以删除");

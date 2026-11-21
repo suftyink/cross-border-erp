@@ -11,6 +11,7 @@ import { useApi } from '@/lib/hooks';
 import { skuDraftApi, skuPath, skuStatusLabels, spuPath, type SkuDraft, type SpuOption, type SkuBatchOutcome, type SkuMigrationIssue } from '@/lib/pdm-sku';
 import { SkuDraftForm } from './sku-draft-form';
 import { SkuHistoryPanel, SkuMigrationPanel } from './sku-history-panels';
+import { specificationText, type SpecificationItem } from '@/lib/pdm-specification';
 
 interface Props { spuId?: string; initialKeyword?: string; compact?: boolean }
 
@@ -73,6 +74,7 @@ export function SkuManagement({ spuId, initialKeyword = '', compact = false }: P
     ...(!compact ? [{ title: '所属 SPU', key: 'spu', render: (_: unknown, row: SkuDraft) =>
       <Link href={`/pdm/products?productId=${encodeURIComponent(row.spuId)}`}>{row.spuCode ?? row.spuTitle ?? '查看 SPU'}</Link> }] : []),
     { title: '基本单位', dataIndex: 'baseUnit', key: 'baseUnit', width: 90, render: (value: string | null) => value || '待补齐' },
+    { title: '规格组合', dataIndex: 'specifications', width: 190, render: (items: SpecificationItem[]) => specificationText(items) },
     { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: (value: string) =>
       <Tag color={value === 'ACTIVE' ? 'green' : value === 'DRAFT' ? 'orange' : undefined}>{skuStatusLabels[value] ?? value}</Tag> },
     { title: '资料', key: 'completeness', width: 120, render: (_: unknown, row: SkuDraft) =>
@@ -132,7 +134,7 @@ export function SkuManagement({ spuId, initialKeyword = '', compact = false }: P
     <Table<SkuDraft> rowKey="skuId" columns={columns} dataSource={rows} loading={skus.isLoading} size={compact ? 'small' : 'middle'}
       rowSelection={canMaintain ? { selectedRowKeys: selected, onChange: setSelected, getCheckboxProps: () => ({ disabled: busy }) } : undefined}
       locale={{ emptyText: skus.error || invalidResponse ? '加载失败，请点击重试' : '暂无 SKU' }}
-      scroll={{ x: compact ? 1100 : 1300 }} pagination={{ current: page, pageSize, showSizeChanger: true,
+      scroll={{ x: compact ? 1300 : 1500 }} pagination={{ current: page, pageSize, showSizeChanger: true,
         onChange: (next, size) => { setPage(next); setPageSize(size); }, showTotal: (total) => `共 ${total} 个 SKU` }} />
     <SkuDraftForm open={formOpen} sku={editing} spuId={compact ? spuId : parent} onCancel={() => setFormOpen(false)} onSaved={onSaved} />
     <SkuHistoryPanel skuId={historyId} onClose={() => setHistoryId(null)} />
@@ -158,6 +160,7 @@ export function SkuManagement({ spuId, initialKeyword = '', compact = false }: P
           <Descriptions.Item label="继承分类">{categoryName(detail.data.categoryId)}</Descriptions.Item>
           <Descriptions.Item label="继承品牌">{brandName(detail.data.brandId)}</Descriptions.Item>
           <Descriptions.Item label="基本库存单位">{detail.data.baseUnit || '待补齐'}</Descriptions.Item>
+          <Descriptions.Item label="规格组合">{specificationText(detail.data.specifications)}</Descriptions.Item>
           <Descriptions.Item label="重量（kg）">{detail.data.weightKg ?? '未填写'}</Descriptions.Item>
           <Descriptions.Item label="申报价值">{detail.data.declaredValue == null ? '未填写' : `${detail.data.declaredValue} ${detail.data.currency ?? ''}`}</Descriptions.Item>
           <Descriptions.Item label="状态">{skuStatusLabels[detail.data.status] ?? detail.data.status}</Descriptions.Item>

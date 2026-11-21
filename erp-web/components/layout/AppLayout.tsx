@@ -42,6 +42,7 @@ const menuItems = [
     children: [
       { key: '/pdm/products', label: '产品管理' },
       { key: '/pdm/skus', label: 'SKU管理' },
+      { key: '/pdm/specifications', label: '规格字典' },
       { key: '/pdm/listings', label: 'Listing管理' },
     ],
   },

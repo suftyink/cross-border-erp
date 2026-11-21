@@ -13,23 +13,25 @@ public class SkuMigrationIssueStore {
     public List<Issue> list(String tenant) {
         String sql = """
                 SELECT 'SKU' AS kind,sku_id AS id,seller_sku AS code,
-                  CASE WHEN status NOT IN ('DRAFT','ACTIVE','INACTIVE') THEN '历史状态需核实'
+                  CASE WHEN specification_review_required THEN '历史自由文本规格待核实，不自动转换或合并'
+                       WHEN status NOT IN ('DRAFT','ACTIVE','INACTIVE') THEN '历史状态需核实'
                        WHEN ever_enabled IS NULL THEN '缺少历史启用和引用证据，身份保持锁定'
                        WHEN seller_sku !~ '^[A-Z0-9_-]+$' THEN '历史本地编码未规范化，需核实关联单据'
                        WHEN ever_enabled IS TRUE AND (base_unit IS NULL OR TRIM(base_unit)='') THEN '已使用商品的基本单位未知，需核实原计量口径'
                        WHEN status='ACTIVE' AND ever_enabled IS NOT TRUE THEN '启用状态与历史事实不一致'
                        ELSE '历史身份需核实' END AS message
-                FROM pdm_sku WHERE tenant_id=? AND (status NOT IN ('DRAFT','ACTIVE','INACTIVE') OR ever_enabled IS NULL
+                FROM pdm_sku WHERE tenant_id=? AND (specification_review_required OR status NOT IN ('DRAFT','ACTIVE','INACTIVE') OR ever_enabled IS NULL
                   OR seller_sku !~ '^[A-Z0-9_-]+$' OR (ever_enabled IS TRUE AND (base_unit IS NULL OR TRIM(base_unit)=''))
                   OR (status='ACTIVE' AND ever_enabled IS NOT TRUE))
                 UNION ALL
                 SELECT 'VARIANT',v.variant_id,v.seller_sku,
-                  CASE WHEN v.canonical_sku_id IS NULL THEN '旧变体无法证明唯一对应的库存 SKU'
+                  CASE WHEN (LOWER(TRIM(COALESCE(v.variant_attributes,''))) NOT IN ('','{}','[]','null') OR LOWER(TRIM(COALESCE(v.variant_attrs,''))) NOT IN ('','{}','[]','null')) THEN '历史自由文本规格待核实，不按显示名称猜测字典身份'
+                       WHEN v.canonical_sku_id IS NULL THEN '旧变体无法证明唯一对应的库存 SKU'
                        WHEN s.sku_id IS NULL THEN '旧变体关联的库存 SKU 不存在或不属于本租户'
                        WHEN v.spu_id<>s.spu_id THEN '旧变体与 SKU 的所属 SPU 不一致'
                        ELSE '旧变体状态或编码与库存 SKU 不一致；实际使用以库存 SKU 为准' END
                 FROM pdm_product_variant v LEFT JOIN pdm_sku s ON s.tenant_id=v.tenant_id AND s.sku_id=v.canonical_sku_id
-                WHERE v.tenant_id=? AND (v.canonical_sku_id IS NULL OR s.sku_id IS NULL OR v.spu_id<>s.spu_id
+                WHERE v.tenant_id=? AND ((LOWER(TRIM(COALESCE(v.variant_attributes,''))) NOT IN ('','{}','[]','null') OR LOWER(TRIM(COALESCE(v.variant_attrs,''))) NOT IN ('','{}','[]','null')) OR v.canonical_sku_id IS NULL OR s.sku_id IS NULL OR v.spu_id<>s.spu_id
                   OR v.status IS DISTINCT FROM s.status OR v.seller_sku IS DISTINCT FROM s.seller_sku)
                 ORDER BY kind,id
                 """;
