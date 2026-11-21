@@ -1,4 +1,4 @@
-import { get, post, put } from '@/lib/api/client';
+import { del, get, post, put } from '@/lib/api/client';
 
 export const skuPath = '/pdm/api/in/v1/skus';
 export const spuPath = '/pdm/api/in/v1/products';
@@ -28,6 +28,11 @@ export interface SkuDraft extends SkuRecord {
   categoryId: string | null;
   brandId: string | null;
   editable: boolean;
+  everEnabled: boolean | null;
+  identityLocked: boolean;
+  identityEditable: boolean;
+  deletable: boolean;
+  historyReviewRequired: boolean;
   weightKg: number | null;
   declaredValue: number | null;
   currency: string | null;
@@ -54,10 +59,21 @@ export interface CreateSkuDraft {
 
 export const skuDraftApi = {
   generateCode: () => get<string>(`${skuPath}/generated-code`),
-  create: (data: CreateSkuDraft) => post<SkuDraft>(skuPath, data),
-  update: (skuId: string, data: Pick<CreateSkuDraft, 'title' | 'baseUnit'>) =>
-    put<SkuDraft>(`${skuPath}/${encodeURIComponent(skuId)}`, data),
+  create: (data: CreateSkuDraft, enable = false) => post<SkuDraft>(enable ? `${skuPath}/save-and-enable` : skuPath, data),
+  update: (skuId: string, data: Omit<CreateSkuDraft, 'newSpu'>, enable = false) =>
+    put<SkuDraft>(`${skuPath}/${encodeURIComponent(skuId)}${enable ? '/save-and-enable' : ''}`, data),
+  enable: (skuId: string) => post<SkuDraft>(`${skuPath}/${encodeURIComponent(skuId)}/enable`, {}),
+  disable: (skuId: string) => post<SkuDraft>(`${skuPath}/${encodeURIComponent(skuId)}/disable`, {}),
+  remove: (skuId: string) => del<void>(`${skuPath}/${encodeURIComponent(skuId)}`),
+  batch: (skuIds: string[], action: 'ENABLE' | 'DISABLE') => post<SkuBatchOutcome[]>(`${skuPath}/batch-status`, { skuIds, action }),
 };
+
+export interface SkuBatchOutcome { skuId: string; success: boolean; code: string; message: string; status: string | null }
+export interface SkuHistoryEntry {
+  eventId: string; action: string; actorId: string; reason: string | null; occurredAt: string;
+  before: Record<string, unknown> | null; after: Record<string, unknown> | null;
+}
+export interface SkuMigrationIssue { kind: string; id: string; code: string | null; message: string }
 
 export const skuStatusLabels: Record<string, string> = {
   DRAFT: '草稿', ACTIVE: '已启用', INACTIVE: '已停用', APPROVED: '已审核', ARCHIVED: '已归档',

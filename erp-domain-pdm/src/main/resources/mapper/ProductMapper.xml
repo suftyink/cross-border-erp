@@ -53,24 +53,29 @@
         FROM pdm_spu WHERE tenant_id = #{tenantId} ORDER BY created_at DESC
     </select>
 
+    <select id="selectSpuForUpdate" resultType="com.aidotnet.erp.pdm.infrastructure.data.SpuDO">
+        SELECT * FROM pdm_spu WHERE tenant_id=#{tenantId} AND spu_id=#{spuId} FOR UPDATE
+    </select>
+
     <insert id="insertSku" parameterType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
-        INSERT INTO pdm_sku (sku_id, tenant_id, spu_id, seller_sku, title, base_unit, weight_kg, declared_value, currency, status, created_at, updated_at)
-        VALUES (#{skuId}, #{tenantId}, #{spuId}, #{sellerSku}, #{title}, #{baseUnit}, #{weightKg}, #{declaredValue}, #{currency}, #{status}, #{createdAt}, #{updatedAt})
+        INSERT INTO pdm_sku (sku_id, tenant_id, spu_id, seller_sku, title, base_unit, weight_kg, declared_value, currency, status, created_at, updated_at, ever_enabled, identity_locked)
+        VALUES (#{skuId}, #{tenantId}, #{spuId}, #{sellerSku}, #{title}, #{baseUnit}, #{weightKg}, #{declaredValue}, #{currency}, #{status}, #{createdAt}, #{updatedAt}, #{everEnabled}, #{identityLocked})
     </insert>
 
     <update id="updateSku" parameterType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
-        UPDATE pdm_sku SET title = #{title}, base_unit = #{baseUnit}, weight_kg = #{weightKg}, declared_value = #{declaredValue},
-        currency = #{currency}, status = #{status}, updated_at = #{updatedAt}
+        UPDATE pdm_sku SET spu_id = #{spuId}, seller_sku = #{sellerSku}, title = #{title}, base_unit = #{baseUnit}, weight_kg = #{weightKg}, declared_value = #{declaredValue},
+        currency = #{currency}, status = #{status}, updated_at = #{updatedAt}, identity_locked = identity_locked OR #{identityLocked},
+        ever_enabled = CASE WHEN ever_enabled = TRUE THEN TRUE ELSE #{everEnabled} END
         WHERE sku_id = #{skuId} AND tenant_id = #{tenantId}
     </update>
 
     <select id="selectSkuBySellerSku" resultType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
-        SELECT sku_id, tenant_id, spu_id, seller_sku, title, base_unit, weight_kg, declared_value, currency, status, created_at, updated_at
+        SELECT sku_id, tenant_id, spu_id, seller_sku, title, base_unit, weight_kg, declared_value, currency, status, created_at, updated_at, ever_enabled, identity_locked
         FROM pdm_sku WHERE tenant_id = #{tenantId} AND UPPER(TRIM(seller_sku)) = UPPER(TRIM(#{sellerSku}))
     </select>
 
     <select id="selectSkusBySpu" resultType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
-        SELECT sku_id, tenant_id, spu_id, seller_sku, title, base_unit, weight_kg, declared_value, currency, status, created_at, updated_at
+        SELECT sku_id, tenant_id, spu_id, seller_sku, title, base_unit, weight_kg, declared_value, currency, status, created_at, updated_at, ever_enabled, identity_locked
         FROM pdm_sku WHERE tenant_id = #{tenantId} AND spu_id = #{spuId} ORDER BY seller_sku
     </select>
 
@@ -82,8 +87,10 @@
         SELECT * FROM pdm_sku WHERE tenant_id = #{tenantId} AND sku_id = #{skuId} FOR UPDATE
     </select>
 
+    <delete id="deleteSku">DELETE FROM pdm_sku WHERE tenant_id=#{tenantId} AND sku_id=#{skuId}</delete>
+
     <select id="selectSkuDrafts" resultType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
-        SELECT * FROM pdm_sku WHERE tenant_id = #{tenantId}
+        SELECT * FROM pdm_sku WHERE tenant_id = #{tenantId} AND status IN ('DRAFT','ACTIVE','INACTIVE','APPROVED','ARCHIVED')
         <if test="keyword != null">
             AND (seller_sku ILIKE CONCAT('%', #{keyword}, '%') OR title ILIKE CONCAT('%', #{keyword}, '%'))
         </if>

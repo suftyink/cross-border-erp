@@ -46,7 +46,7 @@ export function SkuDraftForm({ open, sku, spuId, onCancel, onSaved }: Props) {
     finally { setGenerating(false); }
   };
 
-  const submit = async () => {
+  const submit = async (enable = false) => {
     if (saving) return;
     let values: FormValues;
     try { values = await form.validateFields(); } catch { return; }
@@ -54,12 +54,13 @@ export function SkuDraftForm({ open, sku, spuId, onCancel, onSaved }: Props) {
     setError(null);
     try {
       if (sku) {
-        await skuDraftApi.update(sku.skuId, { title: values.title ?? '', baseUnit: values.baseUnit ?? '' });
+        await skuDraftApi.update(sku.skuId, { title: values.title ?? '', baseUnit: values.baseUnit ?? '',
+          sellerSku: values.sellerSku, spuId: values.spuId }, enable);
       } else {
         await skuDraftApi.create({ sellerSku: values.sellerSku, title: values.title, baseUnit: values.baseUnit,
-          ...(values.mode === 'NEW' ? { newSpu: values.newSpu ?? {} } : { spuId: values.spuId }) });
+          ...(values.mode === 'NEW' ? { newSpu: values.newSpu ?? {} } : { spuId: values.spuId }) }, enable);
       }
-      message.success(sku ? 'SKU 草稿已更新' : 'SKU 草稿已创建');
+      message.success(enable ? 'SKU 已保存并启用' : sku ? 'SKU 资料已更新' : 'SKU 草稿已创建');
       await onSaved().catch(() => { message.warning('已保存，列表刷新失败，请手动刷新'); });
       onCancel();
     } catch (failure) {
@@ -73,12 +74,18 @@ export function SkuDraftForm({ open, sku, spuId, onCancel, onSaved }: Props) {
   };
 
   return (
-    <Modal title={sku ? '编辑 SKU 草稿' : '新建 SKU 草稿'} open={open} width={640} destroyOnClose
-      okText="保存草稿" cancelText="取消" confirmLoading={saving} maskClosable={!saving}
+    <Modal title={sku ? sku.status === 'DRAFT' ? '编辑 SKU 草稿' : '编辑 SKU 资料' : '新建 SKU 草稿'} open={open} width={640} destroyOnClose
+      okText={sku && sku.status !== 'DRAFT' ? '保存资料' : '保存草稿'} cancelText="取消" confirmLoading={saving} maskClosable={!saving}
       onOk={() => void submit()} onCancel={() => { if (!saving) onCancel(); }}
-      okButtonProps={{ disabled: dictionariesFailed || generating }}>
+      okButtonProps={{ disabled: dictionariesFailed || generating }}
+      footer={(_, { OkBtn, CancelBtn }) => <Space><CancelBtn />
+        {(!sku || sku.status !== 'ACTIVE') && <Button disabled={saving || generating || dictionariesFailed}
+          onClick={() => void submit(true)}>保存并启用</Button>}<OkBtn /></Space>}>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Typography.Text type="secondary">草稿可先保存，启用前需补齐名称、分类和基本库存单位。</Typography.Text>
+        {sku?.identityLocked && <Alert type="info" showIcon message={sku.historyReviewRequired
+          ? '历史身份需要核实，编码、归属与库存单位保持锁定；可维护描述资料。'
+          : '商品曾启用或被引用，编码、归属与库存单位永久锁定；停用后仍保留锁定。'} />}
         {error && <Alert type="error" showIcon message={error} />}
         {dictionariesFailed && <Alert type="error" showIcon message="商品或字典加载失败"
           action={<Button size="small" onClick={() => { void products.mutate(); void categories.mutate(); void brands.mutate(); }}>重试</Button>} />}
@@ -88,7 +95,7 @@ export function SkuDraftForm({ open, sku, spuId, onCancel, onSaved }: Props) {
           </Form.Item>}
           {(sku || spuId || mode !== 'NEW') ? <>
             <Form.Item name="spuId" label="所属 SPU" rules={[{ required: true, message: '请选择所属 SPU' }]}>
-              <Select showSearch optionFilterProp="label" disabled={!!sku || !!spuId} loading={products.isLoading}
+              <Select showSearch optionFilterProp="label" disabled={sku ? !sku.identityEditable : !!spuId} loading={products.isLoading}
                 options={products.data?.map((item) => ({ value: item.spuId, label: `${item.sku ?? '未编码'} · ${item.title ?? '待补名称'}` }))} />
             </Form.Item>
             {parent && <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
@@ -110,13 +117,13 @@ export function SkuDraftForm({ open, sku, spuId, onCancel, onSaved }: Props) {
               </Form.Item>
             </Space>
           </>}
-          <Form.Item name="sellerSku" label="本地 SKU 编码" extra={sku ? '本次编辑保留编码和所属 SPU。' : '可手输或生成；保存时去除首尾空白并转大写，留空则自动生成。'}
-            rules={[{ max: 128, message: '最多 128 个字符' }, { pattern: /^[A-Za-z0-9_-]+$/, transform: (value: string) => value?.trim(), message: '仅支持字母、数字、连字符和下划线' }]}>
-            <Input disabled={!!sku} maxLength={128} addonAfter={!sku && <Button type="link" size="small" loading={generating} onClick={() => void generateCode()}>生成编码</Button>} />
+          <Form.Item name="sellerSku" label="本地 SKU 编码" extra="保存时去除首尾空白并转大写。首次启用或业务引用后，身份字段永久锁定。"
+            rules={sku && !sku.identityEditable ? [] : [{ max: 128, message: '最多 128 个字符' }, { pattern: /^[A-Za-z0-9_-]+$/, transform: (value: string) => value?.trim(), message: '仅支持字母、数字、连字符和下划线' }]}>
+            <Input disabled={!!sku && !sku.identityEditable} maxLength={128} addonAfter={(!sku || sku.identityEditable) && <Button type="link" size="small" loading={generating} onClick={() => void generateCode()}>生成编码</Button>} />
           </Form.Item>
           <Form.Item name="title" label="SKU 名称" rules={[{ max: 512 }]}><Input maxLength={512} /></Form.Item>
           <Form.Item name="baseUnit" label="基本库存单位" extra="按整数记库存，箱规不自动换算数量。">
-            <Select allowClear disabled={!!sku?.baseUnit} options={['件', '个', '套', '台', '支', '包'].map((value) => ({ value, label: value }))} />
+            <Select allowClear disabled={!!sku && !sku.identityEditable} options={['件', '个', '套', '台', '支', '包'].map((value) => ({ value, label: value }))} />
           </Form.Item>
         </Form>
       </Space>

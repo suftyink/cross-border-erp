@@ -13,6 +13,8 @@ import com.aidotnet.erp.oms.infrastructure.mapper.FulfillmentPlanMapper;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 /**
  * OMS域履约计划数据存储
@@ -23,16 +25,21 @@ import org.springframework.stereotype.Repository;
  * @author ERP系统
  */
 @Repository
+@Transactional
 public class FulfillmentPlanStore {
+
+    private final SkuReferences skuReferences;
 
     /** 履约计划MyBatis映射器 */
     private final FulfillmentPlanMapper mapper;
 
-    public FulfillmentPlanStore(FulfillmentPlanMapper mapper) {
+    public FulfillmentPlanStore(FulfillmentPlanMapper mapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.mapper = mapper;
     }
 
     public OrderFulfillmentPlan save(OrderFulfillmentPlan plan) {
+        skuReferences.retain(plan.tenantId(), plan.packages().stream().flatMap(item -> item.lines().stream()).map(OrderFulfillmentPackageLine::sellerSku).toList());
         FulfillmentPlanDO existing = mapper.selectPlanByOrderId(plan.tenantId(), plan.orderId());
         FulfillmentPlanDO data = toPlanData(plan);
         if (existing == null) {

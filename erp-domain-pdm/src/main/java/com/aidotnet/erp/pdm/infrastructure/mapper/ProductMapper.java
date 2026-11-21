@@ -42,6 +42,7 @@ public interface ProductMapper {
     void updateSpu(SpuDO spu);
     /** 按租户ID+SPU ID查询SPU */
     SpuDO selectSpu(@Param("tenantId") String tenantId, @Param("spuId") String spuId);
+    SpuDO selectSpuForUpdate(@Param("tenantId") String tenantId, @Param("spuId") String spuId);
     /** 按租户ID查询SPU列表 */
     List<SpuDO> selectSpus(@Param("tenantId") String tenantId);
 
@@ -51,6 +52,7 @@ public interface ProductMapper {
     void updateSku(SkuDO sku);
     SkuDO selectSku(@Param("tenantId") String tenantId, @Param("skuId") String skuId);
     SkuDO selectSkuForUpdate(@Param("tenantId") String tenantId, @Param("skuId") String skuId);
+    void deleteSku(@Param("tenantId") String tenantId, @Param("skuId") String skuId);
     List<SkuDO> selectSkuDrafts(@Param("tenantId") String tenantId, @Param("keyword") String keyword,
                               @Param("spuId") String spuId, @Param("status") String status);
     /** 按租户ID+卖家SKU编码查询SKU */

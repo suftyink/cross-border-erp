@@ -190,6 +190,7 @@ public class PdmExtStore {
     private ProductVariantDO toVariantData(ProductVariant v) {
         ProductVariantDO data = new ProductVariantDO();
         data.setVariantId(v.variantId());
+        data.setCanonicalSkuId(v.skuId());
         data.setTenantId(v.tenantId());
         data.setSpuId(v.spuId());
         data.setVariantName(v.variantName());
@@ -209,7 +210,7 @@ public class PdmExtStore {
         return new ProductVariant(d.getVariantId(), d.getTenantId(), d.getSpuId(), d.getVariantName(),
                 d.getVariantAttributes(), d.getPurchaseCost(), d.getSellingPrice(), d.getPriceAdjustment(),
                 d.getSellerSku(), deserializeList(d.getImages()),
-                ProductStatus.valueOf(d.getStatus()), d.getCreatedAt(), d.getUpdatedAt());
+                ProductStatus.valueOf(d.getStatus()), d.getCreatedAt(), d.getUpdatedAt(), d.getCanonicalSkuId());
     }
 
     private ProductCollectionDO toCollectionData(ProductCollection c) {

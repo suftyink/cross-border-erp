@@ -26,19 +26,26 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 @Repository
+@Transactional
 public class ScmExtStore {
+
+    private final SkuReferences skuReferences;
 
     private final ScmExtMapper mapper;
     private final ObjectMapper objectMapper;
 
-    public ScmExtStore(ScmExtMapper mapper, ObjectMapper objectMapper) {
+    public ScmExtStore(ScmExtMapper mapper, ObjectMapper objectMapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.mapper = mapper;
         this.objectMapper = objectMapper;
     }
 
     public Quote saveQuote(Quote quote) {
+        skuReferences.retain(quote.tenantId(), java.util.Collections.singletonList(quote.sellerSku()));
         QuoteDO existing = mapper.selectQuote(quote.tenantId(), quote.quoteId());
         QuoteDO data = toQuoteData(quote);
         if (existing == null) {
@@ -173,6 +180,7 @@ public class ScmExtStore {
     }
 
     public ProcessingOrder saveProcessingOrder(ProcessingOrder order) {
+        skuReferences.retain(order.tenantId(), java.util.stream.Stream.concat(java.util.stream.Stream.of(order.outputSku()), (order.rawMaterials() == null ? java.util.stream.Stream.<ProcessingOrder.RawMaterial>empty() : order.rawMaterials().stream()).map(ProcessingOrder.RawMaterial::sellerSku)).toList());
         ProcessingOrderDO existing = mapper.selectProcessingOrder(order.tenantId(), order.processId());
         ProcessingOrderDO data = toProcessingOrderData(order);
         if (existing == null) {
@@ -192,6 +200,7 @@ public class ScmExtStore {
     }
 
     public PurchaseTracking saveTracking(PurchaseTracking t) {
+        skuReferences.retain(t.tenantId(), java.util.Collections.singletonList(t.sellerSku()));
         PurchaseTrackingDO existing = mapper.selectTracking(t.tenantId(), t.poId(), t.lineId(), false);
         PurchaseTrackingDO data = toTrackingData(t);
         if (existing == null) {
@@ -215,6 +224,7 @@ public class ScmExtStore {
     }
 
     public PurchaseException saveException(PurchaseException e) {
+        skuReferences.retain(e.tenantId(), java.util.Collections.singletonList(e.sellerSku()));
         PurchaseExceptionDO existing = mapper.selectException(e.tenantId(), e.exceptionId());
         PurchaseExceptionDO data = toExceptionData(e);
         if (existing == null) {

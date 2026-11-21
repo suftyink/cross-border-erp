@@ -24,6 +24,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 /**
  * WMS域库存数据存储
@@ -34,7 +36,10 @@ import org.springframework.stereotype.Repository;
  * @author ERP系统
  */
 @Repository
+@Transactional
 public class InventoryStore {
+
+    private final SkuReferences skuReferences;
 
     /** 库存数据MyBatis映射器 */
     private final InventoryMapper inventoryMapper;
@@ -44,7 +49,8 @@ public class InventoryStore {
      *
      * @param inventoryMapper 库存MyBatis映射器
      */
-    public InventoryStore(InventoryMapper inventoryMapper) {
+    public InventoryStore(InventoryMapper inventoryMapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.inventoryMapper = inventoryMapper;
     }
 
@@ -128,6 +134,7 @@ public class InventoryStore {
     }
 
     public InventoryBalance saveBalance(InventoryBalance balance) {
+        skuReferences.retain(balance.tenantId(), java.util.Collections.singletonList(balance.sellerSku()));
         long located = locatedQuantity(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
         long batchReserved = inventoryMapper.selectBatchReserved(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
         long batchReview = inventoryMapper.selectBatchReview(balance.tenantId(), balance.warehouseId(), balance.sellerSku());
@@ -206,6 +213,7 @@ public class InventoryStore {
     }
 
     public StockCheck saveStockCheck(StockCheck check) {
+        skuReferences.retain(check.tenantId(), java.util.Collections.singletonList(check.sellerSku()));
         StockCheckDO data = toStockCheckData(check);
         StockCheckDO existing = inventoryMapper.selectStockCheck(check.tenantId(), check.checkId());
         if (existing == null) {
@@ -235,6 +243,7 @@ public class InventoryStore {
     }
 
     public InventoryPrediction savePrediction(InventoryPrediction prediction) {
+        skuReferences.retain(prediction.tenantId(), java.util.Collections.singletonList(prediction.sellerSku()));
         InventoryPredictionDO data = toPredictionData(prediction);
         inventoryMapper.insertPrediction(data);
         return prediction;
@@ -246,6 +255,7 @@ public class InventoryStore {
     }
 
     public InventoryTransaction saveTransaction(InventoryTransaction transaction) {
+        skuReferences.retain(transaction.tenantId(), java.util.Collections.singletonList(transaction.sellerSku()));
         inventoryMapper.insertTransaction(toTransactionData(transaction));
         return transaction;
     }

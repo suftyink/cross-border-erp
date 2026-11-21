@@ -40,10 +40,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 @Repository
+@Transactional
 public class PurchaseStore {
 
+    private final SkuReferences skuReferences;
     private final SupplierMapper supplierMapper;
     private final SupplierContactMapper supplierContactMapper;
     private final SupplierQualificationMapper supplierQualificationMapper;
@@ -61,7 +65,8 @@ public class PurchaseStore {
             PurchaseMapper purchaseMapper,
             PurchasePlanMapper purchasePlanMapper,
             ReplenishmentSuggestionMapper suggestionMapper,
-            SupplierEvaluationMapper evaluationMapper) {
+            SupplierEvaluationMapper evaluationMapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.supplierMapper = supplierMapper;
         this.supplierContactMapper = supplierContactMapper;
         this.supplierQualificationMapper = supplierQualificationMapper;
@@ -171,6 +176,7 @@ public class PurchaseStore {
     }
 
     public PurchaseOrder savePurchaseOrder(PurchaseOrder purchaseOrder) {
+        if (purchaseOrder.lines() != null) skuReferences.retain(purchaseOrder.tenantId(), purchaseOrder.lines().stream().map(PurchaseOrderLine::sellerSku).toList());
         PurchaseOrderDO existing = purchaseMapper.selectOrder(purchaseOrder.tenantId(), purchaseOrder.poId());
         PurchaseOrderDO data = toPurchaseOrderData(purchaseOrder);
         if (existing == null) {
@@ -224,6 +230,7 @@ public class PurchaseStore {
     }
 
     public PurchasePlan savePurchasePlan(PurchasePlan purchasePlan) {
+        if (purchasePlan.lines() != null) skuReferences.retain(purchasePlan.tenantId(), purchasePlan.lines().stream().map(PurchasePlanLine::sellerSku).toList());
         PurchasePlanDO existing = purchasePlanMapper.selectPlan(purchasePlan.tenantId(), purchasePlan.planId());
         PurchasePlanDO data = toPurchasePlanData(purchasePlan);
         if (existing == null) {
@@ -256,6 +263,7 @@ public class PurchaseStore {
     }
 
     public ReplenishmentSuggestion saveSuggestion(ReplenishmentSuggestion suggestion) {
+        skuReferences.retain(suggestion.tenantId(), java.util.Collections.singletonList(suggestion.sellerSku()));
         ReplenishmentSuggestionDO existing = suggestionMapper.selectById(suggestion.tenantId(), suggestion.suggestionId());
         ReplenishmentSuggestionDO data = toSuggestionData(suggestion);
         if (existing == null) {

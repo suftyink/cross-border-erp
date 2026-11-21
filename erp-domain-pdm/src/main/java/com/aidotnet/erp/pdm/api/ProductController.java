@@ -240,13 +240,7 @@ public class ProductController {
     }
 
     /** 获取当前租户ID，为空则抛出异常 */
-    private String currentTenant() {
-        String tenantId = TenantContext.getTenantId();
-        if (tenantId == null || tenantId.isBlank()) {
-            throw new BizException("TENANT_REQUIRED", "租户不能为空");
-        }
-        return tenantId;
-    }
+    private String currentTenant() { return PdmTenant.current(); }
 
     public record CreateCategoryRequest(@NotBlank String name, String parentId) {}
     public record CreateBrandRequest(@NotBlank String name) {}

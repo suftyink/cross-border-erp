@@ -92,6 +92,7 @@ class PdmApiTests {
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"));
 
         mockMvc.perform(get("/pdm/api/in/v1/products")
+                        .header("Authorization", "Bearer " + jwtProvider.createToken("tenant-other", "reader", "reader", Set.of()))
                         .header("X-Tenant-Id", "tenant-other"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(0));

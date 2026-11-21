@@ -6,6 +6,7 @@ import com.aidotnet.erp.pdm.domain.Sku;
 import com.aidotnet.erp.pdm.domain.SkuCode;
 import com.aidotnet.erp.pdm.domain.Spu;
 import com.aidotnet.erp.pdm.infrastructure.ProductStore;
+import com.aidotnet.erp.pdm.infrastructure.SkuHistoryStore;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -19,15 +20,22 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** SKU 草稿维护用例；启停与完整业务引用校验由后续生命周期用例承接。 */
+/** SKU 建档与资料维护；身份和启停规则由同一生命周期策略约束。 */
 @Service
 public class SkuDraftService {
     private final ProductStore store;
     private final ProductService products;
+    private final SkuLifecycleService lifecycle;
+    private final SkuIdentityPolicy identities;
+    private final SkuHistoryStore history;
 
-    public SkuDraftService(ProductStore store, ProductService products) {
+    public SkuDraftService(ProductStore store, ProductService products, SkuLifecycleService lifecycle,
+                           SkuIdentityPolicy identities, SkuHistoryStore history) {
         this.store = store;
         this.products = products;
+        this.lifecycle = lifecycle;
+        this.identities = identities;
+        this.history = history;
     }
 
     @Transactional
@@ -49,6 +57,7 @@ public class SkuDraftService {
         if (code == null) code = SkuCode.generate();
         Sku sku = products.createSku(tenant, spuId, new ProductService.CreateSkuCommand(code,
                 clean(command.title()), null, null, null, clean(command.baseUnit())));
+        history.append(tenant, sku.skuId(), "CREATE", null, sku, null);
         return view(sku, products.getSpu(tenant, spuId));
     }
 
@@ -63,8 +72,9 @@ public class SkuDraftService {
         }
         Map<String, Spu> parents = store.listSpus(tenant).stream()
                 .collect(Collectors.toMap(Spu::spuId, Function.identity()));
-        return store.querySkus(tenant, clean(keyword), clean(spuId), state).stream()
-                .map(sku -> view(sku, parents.get(sku.spuId()))).toList();
+        List<Sku> skus = store.querySkus(tenant, clean(keyword), clean(spuId), state);
+        var referenced = identities.referencedIds(tenant, skus);
+        return skus.stream().map(sku -> view(sku, parents.get(sku.spuId()), referenced.contains(sku.skuId()))).toList();
     }
 
     public SkuDraftView get(String tenant, String skuId) {
@@ -74,40 +84,74 @@ public class SkuDraftService {
 
     @Transactional
     public SkuDraftView update(String tenant, String skuId, UpdateDraft command) {
-        Sku sku = store.lockSku(tenant, skuId).orElseThrow(() -> new BizException("SKU_NOT_FOUND", "SKU 不存在"));
-        if (sku.status() != ProductStatus.DRAFT) {
-            throw new BizException("SKU_NOT_EDITABLE", "本入口仅允许编辑草稿 SKU");
+        Sku observed = requireSku(tenant, skuId);
+        String parentId = command.spuId() == null ? observed.spuId() : clean(command.spuId());
+        if (parentId == null) throw new BizException("SKU_SPU_REQUIRED", "所属 SPU 不能为空");
+        for (String parent : java.util.stream.Stream.of(observed.spuId(), parentId).distinct().sorted().toList()) {
+            store.lockSpu(tenant, parent).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
         }
-        // 本切片尚未交付全域引用证明，因此不开放编码、父级或既有单位口径变更。
-        if ((command.sellerSku() != null && !SkuCode.normalize(command.sellerSku()).equals(SkuCode.normalize(sku.sellerSku())))
-                || (command.spuId() != null && !command.spuId().equals(sku.spuId()))) {
-            throw new BizException("SKU_IDENTITY_LOCKED", "本次编辑保留本地 SKU 编码与所属 SPU");
+        String code = command.sellerSku() == null || command.sellerSku().equals(observed.sellerSku())
+                ? observed.sellerSku() : SkuCode.normalize(command.sellerSku());
+        Sku sku = identities.lock(tenant, skuId, code);
+        if (!sku.spuId().equals(observed.spuId())) throw new BizException("SKU_CONCURRENT_CHANGE", "商品归属已变化，请刷新后重试");
+        if (sku.status() != ProductStatus.DRAFT && sku.status() != ProductStatus.ACTIVE && sku.status() != ProductStatus.INACTIVE) {
+            throw new BizException("SKU_HISTORY_REVIEW_REQUIRED", "历史 SKU 状态需要核实");
         }
         String unit = command.baseUnit() == null ? sku.baseUnit() : clean(command.baseUnit());
-        if (clean(sku.baseUnit()) != null && !Objects.equals(sku.baseUnit(), unit)) {
-            throw new BizException("SKU_IDENTITY_LOCKED", "基本库存单位已确定，不能直接改变库存计量口径");
+        if ((!Objects.equals(code, sku.sellerSku()) || !Objects.equals(parentId, sku.spuId()) || !Objects.equals(unit, sku.baseUnit()))
+                && !identities.editableIdentity(sku)) {
+            throw new BizException("SKU_IDENTITY_LOCKED", "商品已启用、被引用或历史待核实，身份字段永久锁定");
         }
-        Sku updated = new Sku(sku.skuId(), tenant, sku.spuId(), sku.sellerSku(),
+        Sku updated = new Sku(sku.skuId(), tenant, parentId, code,
                 command.title() == null ? sku.title() : clean(command.title()), unit,
-                sku.weightKg(), sku.declaredValue(), sku.currency(), sku.status(), sku.createdAt(), Instant.now());
+                sku.weightKg(), sku.declaredValue(), sku.currency(), sku.status(), sku.createdAt(), Instant.now(), sku.everEnabled(), sku.identityLocked());
+        identities.rename(sku, updated);
         store.saveSku(updated);
-        return view(updated, products.getSpu(tenant, sku.spuId()));
+        identities.syncVariants(updated);
+        history.append(tenant, skuId, "UPDATE", sku, updated, null);
+        return view(updated, products.getSpu(tenant, updated.spuId()));
     }
 
     private Sku requireSku(String tenant, String skuId) {
         return store.findSku(tenant, skuId).orElseThrow(() -> new BizException("SKU_NOT_FOUND", "SKU 不存在"));
     }
 
+    public SkuDraftView enable(String tenant, String skuId) {
+        Sku sku = lifecycle.enable(tenant, skuId);
+        return view(sku, products.getSpu(tenant, sku.spuId()));
+    }
+
+    public SkuDraftView disable(String tenant, String skuId) {
+        Sku sku = lifecycle.disable(tenant, skuId);
+        return view(sku, products.getSpu(tenant, sku.spuId()));
+    }
+
+    @Transactional
+    public SkuDraftView createAndEnable(String tenant, CreateDraft command) {
+        SkuDraftView created = create(tenant, command);
+        return enable(tenant, created.skuId());
+    }
+
+    @Transactional
+    public SkuDraftView updateAndEnable(String tenant, String skuId, UpdateDraft command) {
+        update(tenant, skuId, command);
+        return enable(tenant, skuId);
+    }
+
     private SkuDraftView view(Sku sku, Spu spu) {
-        List<String> missing = new ArrayList<>();
-        if (clean(sku.title()) == null) missing.add("SKU 名称");
-        if (spu == null || clean(spu.categoryId()) == null) missing.add("SPU 分类");
-        if (clean(sku.baseUnit()) == null) missing.add("基本库存单位");
+        return view(sku, spu, identities.editableIdentity(sku) && identities.referenced(sku));
+    }
+
+    private SkuDraftView view(Sku sku, Spu spu, boolean referenced) {
+        List<String> missing = lifecycle.missingFields(sku);
+        boolean identityEditable = identities.editableIdentity(sku) && !referenced;
         return new SkuDraftView(sku.skuId(), sku.spuId(), sku.sellerSku(), sku.title(), sku.baseUnit(),
                 sku.status(), spu == null ? null : spu.sku(), spu == null ? null : spu.title(),
                 spu == null ? null : spu.categoryId(), spu == null ? null : spu.brandId(),
                 sku.weightKg(), sku.declaredValue(), sku.currency(),
-                sku.status() == ProductStatus.DRAFT, List.copyOf(missing), sku.createdAt(), sku.updatedAt());
+                sku.status() == ProductStatus.DRAFT || sku.status() == ProductStatus.ACTIVE || sku.status() == ProductStatus.INACTIVE,
+                List.copyOf(missing), sku.createdAt(), sku.updatedAt(), sku.everEnabled(), !identityEditable,
+                identityEditable, identityEditable, sku.everEnabled() == null);
     }
 
     private static String clean(String value) {
@@ -120,5 +164,7 @@ public class SkuDraftService {
     public record SkuDraftView(String skuId, String spuId, String sellerSku, String title, String baseUnit,
                                ProductStatus status, String spuCode, String spuTitle, String categoryId, String brandId,
                                BigDecimal weightKg, BigDecimal declaredValue, String currency,
-                               boolean editable, List<String> missingFields, Instant createdAt, Instant updatedAt) {}
+                               boolean editable, List<String> missingFields, Instant createdAt, Instant updatedAt,
+                               Boolean everEnabled, boolean identityLocked, boolean identityEditable, boolean deletable,
+                               boolean historyReviewRequired) {}
 }

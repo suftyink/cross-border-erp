@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 /**
  * SOM域Listing数据存储
@@ -38,7 +40,10 @@ import org.springframework.stereotype.Repository;
  * @author ERP系统
  */
 @Repository
+@Transactional
 public class SomRepository {
+
+    private final SkuReferences skuReferences;
 
     /** Listing数据MyBatis映射器 */
     private final SomMapper mapper;
@@ -48,7 +53,8 @@ public class SomRepository {
      *
      * @param mapper SOM域MyBatis映射器
      */
-    public SomRepository(SomMapper mapper) {
+    public SomRepository(SomMapper mapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.mapper = mapper;
     }
 
@@ -85,6 +91,7 @@ public class SomRepository {
     }
 
     public ChannelSku saveChannelSku(ChannelSku channelSku) {
+        skuReferences.retain(channelSku.tenantId(), java.util.Collections.singletonList(channelSku.productSku()));
         ChannelSkuDO existing = mapper.selectChannelSku(channelSku.tenantId(), channelSku.channelSkuId());
         ChannelSkuDO data = toChannelSkuData(channelSku);
         if (existing == null) {

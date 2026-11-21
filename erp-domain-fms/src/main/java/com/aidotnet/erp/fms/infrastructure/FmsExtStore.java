@@ -62,6 +62,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 /**
  * FMS扩展数据存储
@@ -74,12 +76,16 @@ import org.springframework.stereotype.Repository;
  * @see FmsExtMapper
  */
 @Repository
+@Transactional
 public class FmsExtStore {
+
+    private final SkuReferences skuReferences;
 
     private final FmsExtMapper mapper;
     private final ObjectMapper objectMapper;
 
-    public FmsExtStore(FmsExtMapper mapper, ObjectMapper objectMapper) {
+    public FmsExtStore(FmsExtMapper mapper, ObjectMapper objectMapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.mapper = mapper;
         this.objectMapper = objectMapper;
     }
@@ -398,6 +404,7 @@ public class FmsExtStore {
     }
 
     public CostAnomaly saveCostAnomaly(CostAnomaly anomaly) {
+        skuReferences.retain(anomaly.tenantId(), java.util.Collections.singletonList(anomaly.sellerSku()));
         CostAnomalyDO existing = mapper.selectCostAnomaly(anomaly.tenantId(), anomaly.anomalyId());
         CostAnomalyDO data = toCostAnomalyData(anomaly);
         if (existing == null) {
@@ -423,6 +430,7 @@ public class FmsExtStore {
     }
 
     public ProfitResult saveProfitResult(ProfitResult result) {
+        skuReferences.retain(result.tenantId(), java.util.Collections.singletonList(result.sellerSku()));
         mapper.insertProfitResult(toProfitResultData(result));
         return result;
     }
@@ -448,6 +456,7 @@ public class FmsExtStore {
     }
 
     public ProfitDeviationAlert saveProfitDeviationAlert(ProfitDeviationAlert alert) {
+        skuReferences.retain(alert.tenantId(), java.util.Collections.singletonList(alert.sellerSku()));
         ProfitDeviationAlertDO existing = mapper.selectProfitDeviationAlert(alert.tenantId(), alert.alertId());
         ProfitDeviationAlertDO data = toProfitDeviationAlertData(alert);
         if (existing == null) {
@@ -916,6 +925,7 @@ public class FmsExtStore {
     }
 
     public TradeComplianceResult saveTradeComplianceResult(TradeComplianceResult result) {
+        skuReferences.retain(result.tenantId(), java.util.Collections.singletonList(result.sellerSku()));
         TradeComplianceResultDO data = toTradeComplianceResultData(result);
         mapper.insertTradeComplianceResult(data);
         return result;
@@ -927,6 +937,7 @@ public class FmsExtStore {
     }
 
     public PlatformComplianceResult savePlatformComplianceResult(PlatformComplianceResult result) {
+        skuReferences.retain(result.tenantId(), java.util.Collections.singletonList(result.sellerSku()));
         PlatformComplianceResultDO data = toPlatformComplianceResultData(result);
         mapper.insertPlatformComplianceResult(data);
         return result;
@@ -1020,6 +1031,7 @@ public class FmsExtStore {
      * </p>
      */
     public void saveCostLayers(String tenantId, String sellerSku, List<CostLayer> layers) {
+        skuReferences.retain(tenantId, java.util.Collections.singletonList(sellerSku));
         String key = tenantId + ":" + sellerSku;
         if (layers == null || layers.isEmpty()) {
             costLayerStore.remove(key);

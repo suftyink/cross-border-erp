@@ -40,14 +40,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class PdmExtService {
 
     private final PdmExtStore extStore;
+    private final SkuVariantBridge skuBridge;
 
     /**
      * 构造函数 - 依赖注入扩展数据存储
      *
      * @param extStore PDM扩展数据存储
      */
-    public PdmExtService(PdmExtStore extStore) {
+    public PdmExtService(PdmExtStore extStore, SkuVariantBridge skuBridge) {
         this.extStore = extStore;
+        this.skuBridge = skuBridge;
     }
 
     /** 创建知识产权记录 */
@@ -136,11 +138,12 @@ public class PdmExtService {
     /** 创建产品变体(初始状态为DRAFT) */
     @Transactional
     public ProductVariant createProductVariant(String tenantId, CreateVariantCommand command) {
+        var sku = skuBridge.bind(tenantId, command.spuId(), command.sellerSku(), command.variantName(), command.baseUnit());
         Instant now = Instant.now();
         ProductVariant variant = new ProductVariant(UUID.randomUUID().toString(), tenantId, command.spuId(),
                 command.variantName(), command.variantAttributes(), command.purchaseCost(), command.sellingPrice(),
-                command.priceAdjustment(), command.sellerSku(), command.images(),
-                ProductStatus.DRAFT, now, now);
+                command.priceAdjustment(), sku.sellerSku(), command.images(),
+                sku.status(), now, now, sku.skuId());
         return extStore.saveProductVariant(variant);
     }
 
@@ -148,13 +151,8 @@ public class PdmExtService {
     @Transactional
     public ProductVariant activateVariant(String tenantId, String variantId) {
         ProductVariant variant = getProductVariant(tenantId, variantId);
-        if (variant.status() != ProductStatus.DRAFT) {
-            throw new BizException("VARIANT_STATUS_INVALID", "只有草稿变体可以激活");
-        }
-        return extStore.saveProductVariant(new ProductVariant(variant.variantId(), variant.tenantId(), variant.spuId(),
-                variant.variantName(), variant.variantAttributes(), variant.purchaseCost(), variant.sellingPrice(),
-                variant.priceAdjustment(), variant.sellerSku(), variant.images(),
-                ProductStatus.ACTIVE, variant.createdAt(), Instant.now()));
+        skuBridge.activate(tenantId, variant);
+        return getProductVariant(tenantId, variantId);
     }
 
     /** 按SPU查询产品变体列表 */
@@ -215,7 +213,7 @@ public class PdmExtService {
     public record UpdateQualityStandardCommand(String name, String description, String inspectionItems, String acceptanceCriteria) {}
     public record CreateVariantCommand(String spuId, String variantName, String variantAttributes,
                                        BigDecimal purchaseCost, BigDecimal sellingPrice, BigDecimal priceAdjustment,
-                                       String sellerSku, List<String> images) {}
+                                       String sellerSku, List<String> images, String baseUnit) {}
     public record CreateCollectionCommand(String sourcePlatform, String sourceUrl, String productName,
                                           String description, String images, String price, String currency,
                                           String categoryId, String collectedBy) {}

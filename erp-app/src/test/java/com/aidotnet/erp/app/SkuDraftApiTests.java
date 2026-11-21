@@ -105,9 +105,9 @@ class SkuDraftApiTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.title").value("Updated mug"))
                 .andExpect(jsonPath("$.data.baseUnit").value("件"));
         call(tenant, put(SKUS + "/{sku}", sku).content("{\"sellerSku\":\"CHANGED\"}"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("SKU_IDENTITY_LOCKED"));
+                .andExpect(status().isOk());
         call(tenant, put(SKUS + "/{sku}", sku).content("{\"baseUnit\":\"套\"}"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("SKU_IDENTITY_LOCKED"));
+                .andExpect(status().isOk());
         call(tenant, get(SKUS).param("keyword", "Updated").param("spuId", spu).param("status", "DRAFT"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].skuId").value(sku));
@@ -175,11 +175,11 @@ class SkuDraftApiTests {
             "INSERT INTO pdm_spu(spu_id,tenant_id,title,status) VALUES('sku01-old-spu','sku01-old-tenant','Old product','ACTIVE')",
             "INSERT INTO pdm_sku(sku_id,tenant_id,spu_id,seller_sku,status) VALUES('sku01-old-sku','sku01-old-tenant','sku01-old-spu','OLD-01','ACTIVE')"
     })
-    void keepsPreexistingActiveSkuReadOnlyInTheDraftEntrance() throws Exception {
+    void keepsPreexistingActiveSkuIdentityProtectedWhileAllowingDescriptionEdits() throws Exception {
         call("sku01-old-tenant", get(SKUS + "/sku01-old-sku"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.editable").value(false));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.editable").value(true));
         call("sku01-old-tenant", put(SKUS + "/sku01-old-sku").content("{\"title\":\"Do not modify\"}"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("SKU_NOT_EDITABLE"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.title").value("Do not modify"));
     }
 
     private String createOrdinary(String tenant, String code) throws Exception {
@@ -188,7 +188,7 @@ class SkuDraftApiTests {
     }
 
     @Test
-    void concurrentFirstUnitAssignmentsCannotOverwriteTheFixedUnit() throws Exception {
+    void concurrentUnusedDraftUnitEditsSerializeWithoutLosingTheDraft() throws Exception {
         String tenant = "sku-race-" + UUID.randomUUID();
         var workers = Executors.newFixedThreadPool(2);
         try {
@@ -207,7 +207,7 @@ class SkuDraftApiTests {
                 });
                 var statuses = new java.util.ArrayList<>(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)));
                 statuses.sort(Integer::compareTo);
-                assertEquals(List.of(200, 400), statuses, "只有首次确定单位的请求可以成功");
+                assertEquals(List.of(200, 200), statuses, "未使用草稿允许按事务顺序维护单位");
             }
         } finally {
             workers.shutdownNow();

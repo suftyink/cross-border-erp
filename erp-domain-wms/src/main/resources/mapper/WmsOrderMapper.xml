@@ -2,6 +2,10 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.aidotnet.erp.wms.infrastructure.mapper.WmsOrderMapper">
 
+    <select id="selectInboundOrderTenant" resultType="string">SELECT tenant_id FROM wms_inbound_order WHERE order_id=#{id}</select>
+    <select id="selectOutboundOrderTenant" resultType="string">SELECT tenant_id FROM wms_outbound_order WHERE order_id=#{id}</select>
+    <select id="selectOutboundPackageTenant" resultType="string">SELECT tenant_id FROM wms_outbound_package WHERE package_id=#{id}</select>
+
     <insert id="insertInboundOrder" parameterType="com.aidotnet.erp.wms.infrastructure.data.InboundOrderDO">
         INSERT INTO wms_inbound_order (order_id, tenant_id, warehouse_id, reference_type, reference_id, status, remark, created_at, updated_at, operator_id)
         VALUES (#{orderId}, #{tenantId}, #{warehouseId}, #{referenceType}, #{referenceId}, #{status}, #{remark}, #{createdAt}, #{updatedAt}, #{operatorId})

@@ -34,6 +34,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 /**
  * FMS核心数据存储
@@ -46,11 +48,15 @@ import org.springframework.stereotype.Repository;
  * @see FinanceMapper
  */
 @Repository
+@Transactional
 public class FinanceStore {
+
+    private final SkuReferences skuReferences;
 
     private final FinanceMapper mapper;
 
-    public FinanceStore(FinanceMapper mapper) {
+    public FinanceStore(FinanceMapper mapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.mapper = mapper;
     }
 
@@ -167,6 +173,7 @@ public class FinanceStore {
     }
 
     public PlatformBill savePlatformBill(PlatformBill platformBill) {
+        skuReferences.retain(platformBill.tenantId(), java.util.Collections.singletonList(platformBill.sellerSku()));
         PlatformBillDO existing = mapper.selectPlatformBill(platformBill.tenantId(), platformBill.billId());
         PlatformBillDO data = toPlatformBillData(platformBill);
         if (existing == null) {
@@ -211,6 +218,7 @@ public class FinanceStore {
     }
 
     public CostEvent saveCostEvent(CostEvent event) {
+        skuReferences.retain(event.tenantId(), java.util.Collections.singletonList(event.sellerSku()));
         CostEventDO existing = mapper.selectCostEvent(event.tenantId(), event.costEventId());
         CostEventDO data = toCostEventData(event);
         if (existing == null) {
@@ -236,6 +244,7 @@ public class FinanceStore {
     }
 
     public ProfitStatement saveProfitStatement(ProfitStatement statement) {
+        skuReferences.retain(statement.tenantId(), java.util.Collections.singletonList(statement.sellerSku()));
         mapper.insertProfitStatement(toProfitStatementData(statement));
         return statement;
     }

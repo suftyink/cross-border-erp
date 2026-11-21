@@ -46,30 +46,33 @@
     </select>
 
     <insert id="insertProductVariant" parameterType="com.aidotnet.erp.pdm.infrastructure.data.ProductVariantDO">
-        INSERT INTO pdm_product_variant (variant_id, tenant_id, spu_id, variant_name, variant_attributes,
+        INSERT INTO pdm_product_variant (variant_id, tenant_id, spu_id, canonical_sku_id, sku_id, enabled, variant_name, variant_attributes,
         purchase_cost, selling_price, price_adjustment, seller_sku, images, status, created_at, updated_at)
-        VALUES (#{variantId}, #{tenantId}, #{spuId}, #{variantName}, #{variantAttributes},
+        VALUES (#{variantId}, #{tenantId}, #{spuId}, #{canonicalSkuId}, #{canonicalSkuId}, (#{status}='ACTIVE'), #{variantName}, #{variantAttributes},
         #{purchaseCost}, #{sellingPrice}, #{priceAdjustment}, #{sellerSku}, #{images}, #{status}, #{createdAt}, #{updatedAt})
     </insert>
 
     <update id="updateProductVariant" parameterType="com.aidotnet.erp.pdm.infrastructure.data.ProductVariantDO">
         UPDATE pdm_product_variant SET variant_name = #{variantName}, variant_attributes = #{variantAttributes},
                purchase_cost = #{purchaseCost}, selling_price = #{sellingPrice}, price_adjustment = #{priceAdjustment},
-               seller_sku = #{sellerSku}, images = #{images}, status = #{status}, updated_at = #{updatedAt}
+               seller_sku = #{sellerSku}, images = #{images}, status = #{status}, enabled=(#{status}='ACTIVE'),
+               canonical_sku_id=#{canonicalSkuId}, updated_at = #{updatedAt}
         WHERE variant_id = #{variantId} AND tenant_id = #{tenantId}
     </update>
 
     <select id="selectProductVariant" resultType="com.aidotnet.erp.pdm.infrastructure.data.ProductVariantDO">
-        SELECT variant_id, tenant_id, spu_id, variant_name, variant_attributes,
-        purchase_cost, selling_price, price_adjustment, seller_sku, images, status, created_at, updated_at
-        FROM pdm_product_variant WHERE tenant_id = #{tenantId} AND variant_id = #{variantId}
+        SELECT v.variant_id, v.tenant_id, v.spu_id, v.variant_name, v.variant_attributes,
+        v.purchase_cost, v.selling_price, v.price_adjustment, s.seller_sku, v.images, s.status, v.created_at, v.updated_at, v.canonical_sku_id
+        FROM pdm_product_variant v JOIN pdm_sku s ON s.tenant_id=v.tenant_id AND s.sku_id=v.canonical_sku_id AND s.spu_id=v.spu_id
+        WHERE v.tenant_id = #{tenantId} AND v.variant_id = #{variantId}
     </select>
 
     <select id="selectProductVariantsBySpu" resultType="com.aidotnet.erp.pdm.infrastructure.data.ProductVariantDO">
-        SELECT variant_id, tenant_id, spu_id, variant_name, variant_attributes,
-        purchase_cost, selling_price, price_adjustment, seller_sku, images, status, created_at, updated_at
-        FROM pdm_product_variant WHERE tenant_id = #{tenantId} AND spu_id = #{spuId}
-        ORDER BY created_at ASC
+        SELECT v.variant_id, v.tenant_id, v.spu_id, v.variant_name, v.variant_attributes,
+        v.purchase_cost, v.selling_price, v.price_adjustment, s.seller_sku, v.images, s.status, v.created_at, v.updated_at, v.canonical_sku_id
+        FROM pdm_product_variant v JOIN pdm_sku s ON s.tenant_id=v.tenant_id AND s.sku_id=v.canonical_sku_id AND s.spu_id=v.spu_id
+        WHERE v.tenant_id = #{tenantId} AND v.spu_id = #{spuId}
+        ORDER BY v.created_at ASC
     </select>
 
     <insert id="insertProductCollection" parameterType="com.aidotnet.erp.pdm.infrastructure.data.ProductCollectionDO">

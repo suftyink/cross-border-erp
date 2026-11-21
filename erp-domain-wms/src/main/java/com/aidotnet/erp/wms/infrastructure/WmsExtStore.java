@@ -16,13 +16,19 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 @Repository
+@Transactional
 public class WmsExtStore {
+
+    private final SkuReferences skuReferences;
 
     private final WmsExtMapper mapper;
 
-    public WmsExtStore(WmsExtMapper mapper) {
+    public WmsExtStore(WmsExtMapper mapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.mapper = mapper;
     }
 
@@ -46,6 +52,7 @@ public class WmsExtStore {
     }
 
     public TransferOrderLine saveTransferOrderLine(String tenantId, TransferOrderLine line) {
+        skuReferences.retain(tenantId, java.util.Collections.singletonList(line.sellerSku()));
         TransferOrderLineDO existing = mapper.selectTransferOrderLine(tenantId, line.lineId());
         TransferOrderLineDO data = toTransferOrderLineData(tenantId, line);
         if (existing == null) {
@@ -80,6 +87,7 @@ public class WmsExtStore {
     }
 
     public StockCheckOrderLine saveStockCheckOrderLine(String tenantId, StockCheckOrderLine line) {
+        skuReferences.retain(tenantId, java.util.Collections.singletonList(line.sellerSku()));
         StockCheckOrderLineDO existing = mapper.selectStockCheckOrderLine(tenantId, line.checkOrderId(), line.lineId());
         StockCheckOrderLineDO data = toStockCheckOrderLineData(tenantId, line);
         if (existing == null) {
@@ -175,6 +183,7 @@ public class WmsExtStore {
     }
 
     public InventoryMovement saveMovement(InventoryMovement movement) {
+        skuReferences.retain(movement.tenantId(), java.util.Collections.singletonList(movement.sellerSku()));
         InventoryMovementDO data = toMovementData(movement);
         mapper.insertInventoryMovement(data);
         return movement;

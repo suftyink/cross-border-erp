@@ -117,6 +117,10 @@ public class ProductStore {
                 .map(this::toSpuDomain);
     }
 
+    public Optional<Spu> lockSpu(String tenantId, String spuId) {
+        return Optional.ofNullable(productMapper.selectSpuForUpdate(tenantId, spuId)).map(this::toSpuDomain);
+    }
+
     /** 按租户ID+卖家SKU查找SKU */
     public Optional<Sku> findSkuBySellerSku(String tenantId, String sellerSku) {
         return Optional.ofNullable(productMapper.selectSkuBySellerSku(tenantId, sellerSku))
@@ -130,6 +134,8 @@ public class ProductStore {
     public Optional<Sku> lockSku(String tenantId, String skuId) {
         return Optional.ofNullable(productMapper.selectSkuForUpdate(tenantId, skuId)).map(this::toSkuDomain);
     }
+
+    public void deleteSku(String tenantId, String skuId) { productMapper.deleteSku(tenantId, skuId); }
 
     public List<Sku> querySkus(String tenantId, String keyword, String spuId, String status) {
         return productMapper.selectSkuDrafts(tenantId, keyword, spuId, status).stream().map(this::toSkuDomain).toList();
@@ -270,6 +276,8 @@ public class ProductStore {
         data.setSellerSku(s.sellerSku());
         data.setTitle(s.title());
         data.setBaseUnit(s.baseUnit());
+        data.setEverEnabled(s.everEnabled());
+        data.setIdentityLocked(s.identityLocked());
         data.setWeightKg(s.weightKg());
         data.setDeclaredValue(s.declaredValue());
         data.setCurrency(s.currency());
@@ -280,9 +288,14 @@ public class ProductStore {
     }
 
     private Sku toSkuDomain(SkuDO d) {
+        ProductStatus status;
+        try { status = ProductStatus.valueOf(d.getStatus()); }
+        catch (IllegalArgumentException | NullPointerException error) {
+            throw new com.aidotnet.erp.common.exception.BizException("SKU_HISTORY_REVIEW_REQUIRED", "历史 SKU 状态无法识别，请查看待核实记录");
+        }
         return new Sku(d.getSkuId(), d.getTenantId(), d.getSpuId(), d.getSellerSku(), d.getTitle(), d.getBaseUnit(),
                 d.getWeightKg(), d.getDeclaredValue(), d.getCurrency(),
-                ProductStatus.valueOf(d.getStatus()), d.getCreatedAt(), d.getUpdatedAt());
+                status, d.getCreatedAt(), d.getUpdatedAt(), d.getEverEnabled(), d.isIdentityLocked());
     }
 
     private SelectionProposalDO toProposalData(SelectionProposal p) {

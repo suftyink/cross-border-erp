@@ -35,7 +35,7 @@ class ProductDevelopmentFlowServiceTest {
     @BeforeEach
     void setUp() {
         productStore = mock(ProductStore.class);
-        productService = new ProductService(productStore, mock(DomainEventPublisher.class));
+        productService = new ProductService(productStore, mock(DomainEventPublisher.class), mock(SkuIdentityPolicy.class));
     }
 
     @Test

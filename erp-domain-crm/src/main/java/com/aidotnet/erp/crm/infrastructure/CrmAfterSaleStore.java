@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 /**
  * CRM售后数据存储
@@ -27,15 +29,20 @@ import org.springframework.stereotype.Repository;
  * @see CrmAfterSaleMapper
  */
 @Repository
+@Transactional
 public class CrmAfterSaleStore {
+
+    private final SkuReferences skuReferences;
 
     private final CrmAfterSaleMapper mapper;
 
-    public CrmAfterSaleStore(CrmAfterSaleMapper mapper) {
+    public CrmAfterSaleStore(CrmAfterSaleMapper mapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.mapper = mapper;
     }
 
     public ReturnRefund saveReturnRefund(ReturnRefund rf) {
+        skuReferences.retain(rf.tenantId(), java.util.Collections.singletonList(rf.sellerSku()));
         ReturnRefundDO existing = mapper.selectReturnRefund(rf.tenantId(), rf.returnId());
         ReturnRefundDO data = toReturnRefundData(rf);
         if (existing == null) {

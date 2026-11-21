@@ -28,6 +28,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 /**
  * OMS域订单数据存储
@@ -39,7 +41,10 @@ import org.springframework.stereotype.Repository;
  * @author ERP系统
  */
 @Repository
+@Transactional
 public class OrderStore {
+
+    private final SkuReferences skuReferences;
 
     /** 订单数据MyBatis映射器 */
     private final OrderMapper orderMapper;
@@ -49,12 +54,14 @@ public class OrderStore {
      *
      * @param orderMapper 订单MyBatis映射器
      */
-    public OrderStore(OrderMapper orderMapper) {
+    public OrderStore(OrderMapper orderMapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.orderMapper = orderMapper;
     }
 
     /** 保存订单，存在则更新，不存在则新增 */
     public SalesOrder save(SalesOrder order) {
+        skuReferences.retain(order.tenantId(), order.lines().stream().map(OrderLine::sellerSku).toList());
         OrderDO existing = orderMapper.selectById(order.orderId(), order.tenantId());
         OrderDO data = toData(order);
         if (existing != null) {

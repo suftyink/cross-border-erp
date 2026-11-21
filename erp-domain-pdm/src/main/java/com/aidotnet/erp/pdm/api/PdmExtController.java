@@ -1,6 +1,7 @@
 package com.aidotnet.erp.pdm.api;
 
 import com.aidotnet.erp.common.api.Result;
+import com.aidotnet.erp.common.security.RequirePermission;
 import com.aidotnet.erp.common.exception.BizException;
 import com.aidotnet.erp.common.tenant.TenantContext;
 import com.aidotnet.erp.pdm.application.PdmExtService;
@@ -118,15 +119,17 @@ public class PdmExtController {
 
     /** 创建产品变体 */
     @PostMapping("/product-variants")
+    @RequirePermission("pdm:product:write")
     public Result<ProductVariant> createProductVariant(@Valid @RequestBody CreateVariantRequest request) {
         return Result.ok(pdmExtService.createProductVariant(currentTenant(), new CreateVariantCommand(
                 request.spuId(), request.variantName(), request.variantAttributes(),
                 request.purchaseCost(), request.sellingPrice(), request.priceAdjustment(),
-                request.sellerSku(), request.images())));
+                request.sellerSku(), request.images(), request.baseUnit())));
     }
 
     /** 激活产品变体(草稿→上架) */
     @PostMapping("/product-variants/{variantId}/activate")
+    @RequirePermission("pdm:product:write")
     public Result<ProductVariant> activateVariant(@PathVariable String variantId) {
         return Result.ok(pdmExtService.activateVariant(currentTenant(), variantId));
     }
@@ -144,13 +147,7 @@ public class PdmExtController {
     }
 
     /** 获取当前租户ID，为空则抛出异常 */
-    private String currentTenant() {
-        String tenantId = TenantContext.getTenantId();
-        if (tenantId == null || tenantId.isBlank()) {
-            throw new BizException("TENANT_REQUIRED", "租户不能为空");
-        }
-        return tenantId;
-    }
+    private String currentTenant() { return PdmTenant.current(); }
 
     public record CreateIpRequest(@NotBlank String spuId, IpType type, @NotBlank String name, String registrationNo,
                                   String jurisdiction, Instant filedAt, Instant expiresAt) {}
@@ -159,5 +156,5 @@ public class PdmExtController {
     public record UpdateQualityStandardRequest(String name, String description, String inspectionItems, String acceptanceCriteria) {}
     public record CreateVariantRequest(@NotBlank String spuId, @NotBlank String variantName, String variantAttributes,
                                        BigDecimal purchaseCost, BigDecimal sellingPrice, BigDecimal priceAdjustment,
-                                       String sellerSku, List<String> images) {}
+                                       String sellerSku, List<String> images, @jakarta.validation.constraints.Size(max=32) String baseUnit) {}
 }

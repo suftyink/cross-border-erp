@@ -47,5 +47,13 @@ public record ProductVariant(
         List<String> images,
         ProductStatus status,
         Instant createdAt,
-        Instant updatedAt
-) {}
+        Instant updatedAt,
+        String skuId
+) {
+    public ProductVariant(String variantId, String tenantId, String spuId, String variantName, String variantAttributes,
+                          BigDecimal purchaseCost, BigDecimal sellingPrice, BigDecimal priceAdjustment, String sellerSku,
+                          List<String> images, ProductStatus status, Instant createdAt, Instant updatedAt) {
+        this(variantId, tenantId, spuId, variantName, variantAttributes, purchaseCost, sellingPrice, priceAdjustment,
+                sellerSku, images, status, createdAt, updatedAt, null);
+    }
+}

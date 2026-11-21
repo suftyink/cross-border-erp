@@ -61,6 +61,7 @@ public class ProductService {
 
     private final ProductStore productStore;
     private final DomainEventPublisher eventPublisher;
+    private final SkuIdentityPolicy skuIdentities;
 
     /**
      * 构造函数 - 依赖注入产品存储和事件发布器
@@ -68,9 +69,10 @@ public class ProductService {
      * @param productStore   产品数据存储
      * @param eventPublisher 领域事件发布器
      */
-    public ProductService(ProductStore productStore, DomainEventPublisher eventPublisher) {
+    public ProductService(ProductStore productStore, DomainEventPublisher eventPublisher, SkuIdentityPolicy skuIdentities) {
         this.productStore = productStore;
         this.eventPublisher = eventPublisher;
+        this.skuIdentities = skuIdentities;
     }
 
     /**
@@ -112,10 +114,13 @@ public class ProductService {
 
     @Transactional
     public Spu updateSpu(String tenantId, String spuId, UpdateSpuCommand command) {
-        Spu spu = productStore.findSpu(tenantId, spuId)
+        Spu spu = productStore.lockSpu(tenantId, spuId)
                 .orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
         String categoryId = command.categoryId() == null ? spu.categoryId() : optionalIdentifier(command.categoryId());
         String brandId = command.brandId() == null ? spu.brandId() : optionalIdentifier(command.brandId());
+        if (categoryId == null && productStore.listSkus(tenantId, spuId).stream().anyMatch(sku -> !skuIdentities.editableIdentity(sku))) {
+            throw new BizException("SKU_PARENT_LOCKED", "已有启用、引用或历史待核实的 SKU，不能移除共用分类");
+        }
         if (command.categoryId() != null && categoryId != null) {
             productStore.findCategory(tenantId, categoryId).orElseThrow(() -> new BizException("CATEGORY_NOT_FOUND", "类目不存在"));
         }
@@ -140,14 +145,13 @@ public class ProductService {
     public Sku createSku(String tenantId, String spuId, CreateSkuCommand command) {
         productStore.findSpu(tenantId, spuId).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
         String code = SkuCode.normalize(command.sellerSku());
-        productStore.findSkuBySellerSku(tenantId, code).ifPresent(existing -> {
-            throw new BizException("SKU_DUPLICATED", "SKU已存在");
-        });
+        String skuId = UUID.randomUUID().toString();
+        boolean referenced = skuIdentities.claimNew(tenantId, skuId, code);
         Instant now = Instant.now();
         try {
-            return productStore.saveSku(new Sku(UUID.randomUUID().toString(), tenantId, spuId, code,
+            return productStore.saveSku(new Sku(skuId, tenantId, spuId, code,
                     command.title(), command.baseUnit(), command.weightKg(), command.declaredValue(), command.currency(),
-                    ProductStatus.DRAFT, now, now));
+                    ProductStatus.DRAFT, now, now, false, referenced));
         } catch (DuplicateKeyException ex) {
             throw new BizException("SKU_DUPLICATED", "SKU已存在");
         }
@@ -159,7 +163,7 @@ public class ProductService {
 
     @Transactional
     public Spu publishSpu(String tenantId, String spuId) {
-        Spu spu = productStore.findSpu(tenantId, spuId).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
+        Spu spu = productStore.lockSpu(tenantId, spuId).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
         if (productStore.listSkus(tenantId, spuId).isEmpty()) {
             throw new BizException("SKU_REQUIRED", "上架前至少需要一个SKU");
         }
@@ -173,7 +177,7 @@ public class ProductService {
 
     @Transactional
     public Spu unpublishSpu(String tenantId, String spuId) {
-        Spu spu = productStore.findSpu(tenantId, spuId).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
+        Spu spu = productStore.lockSpu(tenantId, spuId).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
         if (spu.status() != ProductStatus.ACTIVE) {
             throw new BizException("SPU_STATUS_INVALID", "只有上架产品可以下架");
         }
@@ -184,7 +188,7 @@ public class ProductService {
 
     @Transactional
     public Spu updateIpStatus(String tenantId, String spuId, String ipStatus) {
-        Spu spu = productStore.findSpu(tenantId, spuId).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
+        Spu spu = productStore.lockSpu(tenantId, spuId).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
         Spu updated = new Spu(spu.spuId(), spu.tenantId(), spu.sku(), spu.title(), spu.description(),
                 spu.categoryId(), spu.brandId(), spu.status(), ipStatus, spu.createdAt(), Instant.now());
         Spu saved = productStore.saveSpu(updated);

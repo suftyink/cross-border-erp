@@ -13,6 +13,7 @@ public class ProductVariantDO {
     private String variantId;
     private String tenantId;
     private String spuId;
+    private String canonicalSkuId;
     private String variantName;
     private String variantAttributes;
     private BigDecimal purchaseCost;
@@ -32,6 +33,8 @@ public class ProductVariantDO {
     public void setTenantId(String tenantId) { this.tenantId = tenantId; }
     public String getSpuId() { return spuId; }
     public void setSpuId(String spuId) { this.spuId = spuId; }
+    public String getCanonicalSkuId() { return canonicalSkuId; }
+    public void setCanonicalSkuId(String canonicalSkuId) { this.canonicalSkuId = canonicalSkuId; }
     public String getVariantName() { return variantName; }
     public void setVariantName(String variantName) { this.variantName = variantName; }
     public String getVariantAttributes() { return variantAttributes; }

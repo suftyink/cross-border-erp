@@ -18,6 +18,15 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface WmsOrderMapper {
+    // 全局唯一单据 ID 的本域内部归属查询，不读取请求上下文。
+    @com.baomidou.mybatisplus.annotation.InterceptorIgnore(tenantLine = "true")
+    String selectInboundOrderTenant(@Param("id") String id);
+    // 全局唯一单据 ID 的本域内部归属查询，不读取请求上下文。
+    @com.baomidou.mybatisplus.annotation.InterceptorIgnore(tenantLine = "true")
+    String selectOutboundOrderTenant(@Param("id") String id);
+    // 全局唯一单据 ID 的本域内部归属查询，不读取请求上下文。
+    @com.baomidou.mybatisplus.annotation.InterceptorIgnore(tenantLine = "true")
+    String selectOutboundPackageTenant(@Param("id") String id);
 
     void insertInboundOrder(InboundOrderDO order);
     void updateInboundOrder(InboundOrderDO order);

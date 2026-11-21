@@ -116,7 +116,7 @@ function ProductsContent() {
           <Form.Item name="description" label="产品描述"><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
-      <Modal title="产品详情" open={!!detailId} onCancel={() => setDetailId(null)} footer={null} width={880}>
+      <Modal title="产品详情" open={!!detailId} onCancel={() => setDetailId(null)} footer={null} width={1180}>
         {detail.isLoading && <Typography.Text>正在加载产品详情…</Typography.Text>}
         {detail.error && <Alert type="error" showIcon message="产品详情加载失败" />}
         {currentProduct && (

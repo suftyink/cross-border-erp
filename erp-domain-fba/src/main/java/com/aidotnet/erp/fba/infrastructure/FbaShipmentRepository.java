@@ -28,6 +28,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 /**
  * FBA域发货数据存储
@@ -39,7 +41,10 @@ import org.springframework.stereotype.Repository;
  * @author ERP系统
  */
 @Repository
+@Transactional
 public class FbaShipmentRepository {
+
+    private final SkuReferences skuReferences;
 
     /** FBA发货MyBatis映射器 */
     private final FbaShipmentMapper mapper;
@@ -50,7 +55,8 @@ public class FbaShipmentRepository {
     /** 发货异常内存存储(临时) */
     private final ConcurrentHashMap<String, ShipmentException> shipmentExceptionStore = new ConcurrentHashMap<>();
 
-    public FbaShipmentRepository(FbaShipmentMapper mapper) {
+    public FbaShipmentRepository(FbaShipmentMapper mapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.mapper = mapper;
     }
 
@@ -79,6 +85,7 @@ public class FbaShipmentRepository {
     }
 
     public FbaShipmentItem saveShipmentItem(FbaShipmentItem item) {
+        skuReferences.retain(item.tenantId(), java.util.Collections.singletonList(item.sellerSku()));
         mapper.insertShipmentItem(toShipmentItemData(item));
         return item;
     }
@@ -90,6 +97,7 @@ public class FbaShipmentRepository {
     }
 
     public CartonLabel saveCartonLabel(CartonLabel label) {
+        skuReferences.retain(label.tenantId(), java.util.Collections.singletonList(label.sellerSku()));
         mapper.insertCartonLabel(toCartonLabelData(label));
         return label;
     }
@@ -101,6 +109,7 @@ public class FbaShipmentRepository {
     }
 
     public FbaInboundPlan saveInboundPlan(FbaInboundPlan plan) {
+        skuReferences.retain(plan.tenantId(), java.util.Collections.singletonList(plan.sellerSku()));
         FbaInboundPlanDO existing = mapper.selectInboundPlan(plan.tenantId(), plan.planId());
         FbaInboundPlanDO data = toInboundPlanData(plan);
         if (existing == null) {
@@ -135,6 +144,7 @@ public class FbaShipmentRepository {
     }
 
     public FbaInventory saveInventory(FbaInventory inventory) {
+        skuReferences.retain(inventory.tenantId(), java.util.Collections.singletonList(inventory.sellerSku()));
         FbaInventoryDO existing = mapper.selectInventory(inventory.tenantId(), inventory.inventoryId());
         FbaInventoryDO data = toInventoryData(inventory);
         if (existing == null) {
@@ -163,6 +173,7 @@ public class FbaShipmentRepository {
     }
 
     public ReplenishmentPlan savePlan(ReplenishmentPlan plan) {
+        skuReferences.retain(plan.tenantId(), java.util.Collections.singletonList(plan.sellerSku()));
         ReplenishmentPlanDO existing = mapper.selectPlan(plan.tenantId(), plan.planId());
         ReplenishmentPlanDO data = toPlanData(plan);
         if (existing == null) {
@@ -399,6 +410,7 @@ public class FbaShipmentRepository {
     }
 
     public RestockSuggestion saveRestockSuggestion(RestockSuggestion suggestion) {
+        skuReferences.retain(suggestion.tenantId(), java.util.Collections.singletonList(suggestion.sellerSku()));
         restockSuggestionStore.put(suggestion.suggestionId(), suggestion);
         return suggestion;
     }
@@ -410,6 +422,7 @@ public class FbaShipmentRepository {
     }
 
     public RestockCartItem saveRestockCartItem(RestockCartItem item) {
+        skuReferences.retain(item.tenantId(), java.util.Collections.singletonList(item.sellerSku()));
         restockCartStore.put(item.cartItemId(), item);
         return item;
     }

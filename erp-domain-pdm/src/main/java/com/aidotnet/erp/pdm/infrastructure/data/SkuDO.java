@@ -31,6 +31,8 @@ public class SkuDO {
     private String title;
     /** 基本库存单位，草稿可暂未填写 */
     private String baseUnit;
+    private Boolean everEnabled;
+    private boolean identityLocked;
     /** 重量(千克)，用于物流运费计算 */
     private BigDecimal weightKg;
     /** 申报价值，用于清关申报 */
@@ -58,6 +60,10 @@ public class SkuDO {
     public void setTitle(String title) { this.title = title; }
     public String getBaseUnit() { return baseUnit; }
     public void setBaseUnit(String baseUnit) { this.baseUnit = baseUnit; }
+    public Boolean getEverEnabled() { return everEnabled; }
+    public void setEverEnabled(Boolean everEnabled) { this.everEnabled = everEnabled; }
+    public boolean isIdentityLocked() { return identityLocked; }
+    public void setIdentityLocked(boolean identityLocked) { this.identityLocked = identityLocked; }
     public BigDecimal getWeightKg() { return weightKg; }
     public void setWeightKg(BigDecimal weightKg) { this.weightKg = weightKg; }
     public BigDecimal getDeclaredValue() { return declaredValue; }

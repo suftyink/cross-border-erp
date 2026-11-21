@@ -36,13 +36,19 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 @Repository
+@Transactional
 public class WmsOrderStore {
+
+    private final SkuReferences skuReferences;
 
     private final WmsOrderMapper mapper;
 
-    public WmsOrderStore(WmsOrderMapper mapper) {
+    public WmsOrderStore(WmsOrderMapper mapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.mapper = mapper;
     }
 
@@ -79,10 +85,12 @@ public class WmsOrderStore {
     }
 
     public void saveInboundOrderLine(InboundOrderLine line) {
+        skuReferences.retain(mapper.selectInboundOrderTenant(line.orderId()), java.util.Collections.singletonList(line.sellerSku()));
         mapper.insertInboundOrderLine(toInboundOrderLineData(line));
     }
 
     public void updateInboundOrderLine(InboundOrderLine line) {
+        skuReferences.retain(mapper.selectInboundOrderTenant(line.orderId()), java.util.Collections.singletonList(line.sellerSku()));
         mapper.updateInboundOrderLine(toInboundOrderLineData(line));
     }
 
@@ -110,10 +118,12 @@ public class WmsOrderStore {
     }
 
     public void saveOutboundOrderLine(OutboundOrderLine line) {
+        skuReferences.retain(mapper.selectOutboundOrderTenant(line.orderId()), java.util.Collections.singletonList(line.sellerSku()));
         mapper.insertOutboundOrderLine(toOutboundOrderLineData(line));
     }
 
     public void updateOutboundOrderLine(OutboundOrderLine line) {
+        skuReferences.retain(mapper.selectOutboundOrderTenant(line.orderId()), java.util.Collections.singletonList(line.sellerSku()));
         mapper.updateOutboundOrderLine(toOutboundOrderLineData(line));
     }
 
@@ -143,6 +153,7 @@ public class WmsOrderStore {
     }
 
     public void saveOutboundPackageLine(OutboundPackageLine packageLine) {
+        skuReferences.retain(mapper.selectOutboundPackageTenant(packageLine.packageId()), java.util.Collections.singletonList(packageLine.sellerSku()));
         mapper.insertOutboundPackageLine(toOutboundPackageLineData(packageLine));
     }
 
@@ -153,6 +164,7 @@ public class WmsOrderStore {
     }
 
     public InventoryMovement saveMovement(InventoryMovement movement) {
+        skuReferences.retain(movement.tenantId(), java.util.Collections.singletonList(movement.sellerSku()));
         mapper.insertMovement(toMovementData(movement));
         return movement;
     }
@@ -162,6 +174,7 @@ public class WmsOrderStore {
     }
 
     public QualityCheck saveQualityCheck(QualityCheck check) {
+        skuReferences.retain(check.tenantId(), java.util.Collections.singletonList(check.sellerSku()));
         mapper.insertQualityCheck(toQualityCheckData(check));
         return check;
     }
@@ -179,6 +192,7 @@ public class WmsOrderStore {
     }
 
     public DefectiveReturn saveDefectiveReturn(DefectiveReturn defectiveReturn) {
+        skuReferences.retain(defectiveReturn.tenantId(), java.util.Collections.singletonList(defectiveReturn.sellerSku()));
         DefectiveReturnDO existing = mapper.selectDefectiveReturn(defectiveReturn.tenantId(), defectiveReturn.returnId());
         DefectiveReturnDO data = toDefectiveReturnData(defectiveReturn);
         if (existing == null) {
@@ -206,6 +220,7 @@ public class WmsOrderStore {
     }
 
     public ProductRepair saveProductRepair(ProductRepair productRepair) {
+        skuReferences.retain(productRepair.tenantId(), java.util.Collections.singletonList(productRepair.sellerSku()));
         ProductRepairDO existing = mapper.selectProductRepair(productRepair.tenantId(), productRepair.repairId());
         ProductRepairDO data = toProductRepairData(productRepair);
         if (existing == null) {

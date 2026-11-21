@@ -34,6 +34,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import com.aidotnet.erp.common.pdm.SkuReferences;
 
 /**
  * CRM核心数据存储
@@ -53,7 +55,10 @@ import org.springframework.stereotype.Repository;
  * @see CrmExtMapper
  */
 @Repository
+@Transactional
 public class CrmStore {
+
+    private final SkuReferences skuReferences;
 
     private final CrmMapper mapper;
     private final CrmExtMapper extMapper;
@@ -64,7 +69,8 @@ public class CrmStore {
     private final ConcurrentHashMap<String, EmailCampaign> emailCampaignStore = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, QualityIssue> qualityIssueStore = new ConcurrentHashMap<>();
 
-    public CrmStore(CrmMapper mapper, CrmExtMapper extMapper, ObjectMapper objectMapper) {
+    public CrmStore(CrmMapper mapper, CrmExtMapper extMapper, ObjectMapper objectMapper, SkuReferences skuReferences) {
+        this.skuReferences = skuReferences;
         this.mapper = mapper;
         this.extMapper = extMapper;
         this.objectMapper = objectMapper;
@@ -111,6 +117,7 @@ public class CrmStore {
     }
 
     public ReturnRefund saveReturn(ReturnRefund r) {
+        skuReferences.retain(r.tenantId(), java.util.Collections.singletonList(r.sellerSku()));
         ReturnRefundDO existing = mapper.selectReturn(r.tenantId(), r.returnId());
         ReturnRefundDO data = toReturnData(r);
         if (existing == null) {
@@ -132,6 +139,7 @@ public class CrmStore {
     }
 
     public ReviewAnalysis saveReviewAnalysis(ReviewAnalysis analysis) {
+        skuReferences.retain(analysis.tenantId(), java.util.Collections.singletonList(analysis.sellerSku()));
         mapper.insertReviewAnalysis(toReviewData(analysis));
         return analysis;
     }

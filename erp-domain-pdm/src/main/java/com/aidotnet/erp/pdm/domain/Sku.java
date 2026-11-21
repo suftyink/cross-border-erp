@@ -33,4 +33,13 @@ import java.time.Instant;
  * @author ERP系统
  */
 public record Sku(String skuId, String tenantId, String spuId, String sellerSku, String title, String baseUnit, BigDecimal weightKg,
-                  BigDecimal declaredValue, String currency, ProductStatus status, Instant createdAt, Instant updatedAt) {}
+                  BigDecimal declaredValue, String currency, ProductStatus status, Instant createdAt, Instant updatedAt,
+                  Boolean everEnabled, boolean identityLocked) {
+    public Sku(String skuId, String tenantId, String spuId, String sellerSku, String title, String baseUnit,
+               BigDecimal weightKg, BigDecimal declaredValue, String currency, ProductStatus status,
+               Instant createdAt, Instant updatedAt) {
+        this(skuId, tenantId, spuId, sellerSku, title, baseUnit, weightKg, declaredValue, currency, status,
+                createdAt, updatedAt, status == ProductStatus.DRAFT ? false : status == ProductStatus.ACTIVE ? true : null,
+                status != ProductStatus.DRAFT);
+    }
+}
