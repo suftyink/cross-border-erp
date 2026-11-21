@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.aidotnet.erp.common.security.JwtProvider;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -25,9 +27,13 @@ class PdmApiTests {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private JwtProvider jwtProvider;
+
     @Test
     void manageProductMasterDataWithTenantIsolationAndPublishRule() throws Exception {
         String categoryResponse = mockMvc.perform(post("/pdm/api/in/v1/categories")
+                        .header("Authorization", authorization())
                         .header("X-Tenant-Id", "tenant-demo")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Electronics\"}"))
@@ -37,6 +43,7 @@ class PdmApiTests {
         String categoryId = objectMapper.readTree(categoryResponse).at("/data/categoryId").asText();
 
         String brandResponse = mockMvc.perform(post("/pdm/api/in/v1/brands")
+                        .header("Authorization", authorization())
                         .header("X-Tenant-Id", "tenant-demo")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"AIDotNet\"}"))
@@ -45,6 +52,7 @@ class PdmApiTests {
         String brandId = objectMapper.readTree(brandResponse).at("/data/brandId").asText();
 
         String spuResponse = mockMvc.perform(post("/pdm/api/in/v1/products")
+                        .header("Authorization", authorization())
                         .header("X-Tenant-Id", "tenant-demo")
                         .header("X-Trace-Id", "trace-pdm")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -56,11 +64,13 @@ class PdmApiTests {
         String spuId = spuJson.at("/data/spuId").asText();
 
         mockMvc.perform(patch("/pdm/api/in/v1/products/" + spuId + "/publish")
+                        .header("Authorization", authorization())
                         .header("X-Tenant-Id", "tenant-demo"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("SKU_REQUIRED"));
 
         mockMvc.perform(post("/pdm/api/in/v1/products/" + spuId + "/skus")
+                        .header("Authorization", authorization())
                         .header("X-Tenant-Id", "tenant-demo")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"sellerSku\":\"SPK-BLK-US\",\"title\":\"Bluetooth Speaker Black US\",\"weightKg\":0.80,\"declaredValue\":29.99,\"currency\":\"USD\"}"))
@@ -68,6 +78,7 @@ class PdmApiTests {
                 .andExpect(jsonPath("$.data.sellerSku").value("SPK-BLK-US"));
 
         mockMvc.perform(post("/pdm/api/in/v1/products/" + spuId + "/skus")
+                        .header("Authorization", authorization())
                         .header("X-Tenant-Id", "tenant-demo")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"sellerSku\":\"SPK-BLK-US\",\"title\":\"Duplicate\",\"weightKg\":0.80,\"declaredValue\":29.99,\"currency\":\"USD\"}"))
@@ -75,6 +86,7 @@ class PdmApiTests {
                 .andExpect(jsonPath("$.code").value("SKU_DUPLICATED"));
 
         mockMvc.perform(patch("/pdm/api/in/v1/products/" + spuId + "/publish")
+                        .header("Authorization", authorization())
                         .header("X-Tenant-Id", "tenant-demo"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"));
@@ -83,5 +95,9 @@ class PdmApiTests {
                         .header("X-Tenant-Id", "tenant-other"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    private String authorization() {
+        return "Bearer " + jwtProvider.createToken("tenant-demo", "product-worker", "worker", Set.of("pdm:product:write"));
     }
 }

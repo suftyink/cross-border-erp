@@ -54,24 +54,42 @@
     </select>
 
     <insert id="insertSku" parameterType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
-        INSERT INTO pdm_sku (sku_id, tenant_id, spu_id, seller_sku, title, weight_kg, declared_value, currency, status, created_at, updated_at)
-        VALUES (#{skuId}, #{tenantId}, #{spuId}, #{sellerSku}, #{title}, #{weightKg}, #{declaredValue}, #{currency}, #{status}, #{createdAt}, #{updatedAt})
+        INSERT INTO pdm_sku (sku_id, tenant_id, spu_id, seller_sku, title, base_unit, weight_kg, declared_value, currency, status, created_at, updated_at)
+        VALUES (#{skuId}, #{tenantId}, #{spuId}, #{sellerSku}, #{title}, #{baseUnit}, #{weightKg}, #{declaredValue}, #{currency}, #{status}, #{createdAt}, #{updatedAt})
     </insert>
 
     <update id="updateSku" parameterType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
-        UPDATE pdm_sku SET title = #{title}, weight_kg = #{weightKg}, declared_value = #{declaredValue},
+        UPDATE pdm_sku SET title = #{title}, base_unit = #{baseUnit}, weight_kg = #{weightKg}, declared_value = #{declaredValue},
         currency = #{currency}, status = #{status}, updated_at = #{updatedAt}
         WHERE sku_id = #{skuId} AND tenant_id = #{tenantId}
     </update>
 
     <select id="selectSkuBySellerSku" resultType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
-        SELECT sku_id, tenant_id, spu_id, seller_sku, title, weight_kg, declared_value, currency, status, created_at, updated_at
-        FROM pdm_sku WHERE tenant_id = #{tenantId} AND seller_sku = #{sellerSku}
+        SELECT sku_id, tenant_id, spu_id, seller_sku, title, base_unit, weight_kg, declared_value, currency, status, created_at, updated_at
+        FROM pdm_sku WHERE tenant_id = #{tenantId} AND UPPER(TRIM(seller_sku)) = UPPER(TRIM(#{sellerSku}))
     </select>
 
     <select id="selectSkusBySpu" resultType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
-        SELECT sku_id, tenant_id, spu_id, seller_sku, title, weight_kg, declared_value, currency, status, created_at, updated_at
+        SELECT sku_id, tenant_id, spu_id, seller_sku, title, base_unit, weight_kg, declared_value, currency, status, created_at, updated_at
         FROM pdm_sku WHERE tenant_id = #{tenantId} AND spu_id = #{spuId} ORDER BY seller_sku
+    </select>
+
+    <select id="selectSku" resultType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
+        SELECT * FROM pdm_sku WHERE tenant_id = #{tenantId} AND sku_id = #{skuId}
+    </select>
+
+    <select id="selectSkuForUpdate" resultType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
+        SELECT * FROM pdm_sku WHERE tenant_id = #{tenantId} AND sku_id = #{skuId} FOR UPDATE
+    </select>
+
+    <select id="selectSkuDrafts" resultType="com.aidotnet.erp.pdm.infrastructure.data.SkuDO">
+        SELECT * FROM pdm_sku WHERE tenant_id = #{tenantId}
+        <if test="keyword != null">
+            AND (seller_sku ILIKE CONCAT('%', #{keyword}, '%') OR title ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="spuId != null">AND spu_id = #{spuId}</if>
+        <if test="status != null">AND status = #{status}</if>
+        ORDER BY created_at DESC, sku_id
     </select>
 
     <insert id="insertProposal" parameterType="com.aidotnet.erp.pdm.infrastructure.data.SelectionProposalDO">

@@ -29,6 +29,8 @@ public class SkuDO {
     private String sellerSku;
     /** SKU标题 */
     private String title;
+    /** 基本库存单位，草稿可暂未填写 */
+    private String baseUnit;
     /** 重量(千克)，用于物流运费计算 */
     private BigDecimal weightKg;
     /** 申报价值，用于清关申报 */
@@ -54,6 +56,8 @@ public class SkuDO {
     public void setSellerSku(String sellerSku) { this.sellerSku = sellerSku; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
+    public String getBaseUnit() { return baseUnit; }
+    public void setBaseUnit(String baseUnit) { this.baseUnit = baseUnit; }
     public BigDecimal getWeightKg() { return weightKg; }
     public void setWeightKg(BigDecimal weightKg) { this.weightKg = weightKg; }
     public BigDecimal getDeclaredValue() { return declaredValue; }

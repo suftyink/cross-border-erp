@@ -87,9 +87,9 @@ public class ProductStore {
         return spu;
     }
 
-    /** 保存SKU(按sellerSku去重)，存在则更新，不存在则新增 */
+    /** 按稳定 SKU ID 保存；编码冲突由唯一约束拒绝，不将新增变成更新。 */
     public Sku saveSku(Sku sku) {
-        SkuDO existing = productMapper.selectSkuBySellerSku(sku.tenantId(), sku.sellerSku());
+        SkuDO existing = productMapper.selectSku(sku.tenantId(), sku.skuId());
         SkuDO data = toSkuData(sku);
         if (existing == null) {
             productMapper.insertSku(data);
@@ -121,6 +121,18 @@ public class ProductStore {
     public Optional<Sku> findSkuBySellerSku(String tenantId, String sellerSku) {
         return Optional.ofNullable(productMapper.selectSkuBySellerSku(tenantId, sellerSku))
                 .map(this::toSkuDomain);
+    }
+
+    public Optional<Sku> findSku(String tenantId, String skuId) {
+        return Optional.ofNullable(productMapper.selectSku(tenantId, skuId)).map(this::toSkuDomain);
+    }
+
+    public Optional<Sku> lockSku(String tenantId, String skuId) {
+        return Optional.ofNullable(productMapper.selectSkuForUpdate(tenantId, skuId)).map(this::toSkuDomain);
+    }
+
+    public List<Sku> querySkus(String tenantId, String keyword, String spuId, String status) {
+        return productMapper.selectSkuDrafts(tenantId, keyword, spuId, status).stream().map(this::toSkuDomain).toList();
     }
 
     /** 按租户ID查询SPU列表 */
@@ -257,6 +269,7 @@ public class ProductStore {
         data.setSpuId(s.spuId());
         data.setSellerSku(s.sellerSku());
         data.setTitle(s.title());
+        data.setBaseUnit(s.baseUnit());
         data.setWeightKg(s.weightKg());
         data.setDeclaredValue(s.declaredValue());
         data.setCurrency(s.currency());
@@ -267,7 +280,7 @@ public class ProductStore {
     }
 
     private Sku toSkuDomain(SkuDO d) {
-        return new Sku(d.getSkuId(), d.getTenantId(), d.getSpuId(), d.getSellerSku(), d.getTitle(),
+        return new Sku(d.getSkuId(), d.getTenantId(), d.getSpuId(), d.getSellerSku(), d.getTitle(), d.getBaseUnit(),
                 d.getWeightKg(), d.getDeclaredValue(), d.getCurrency(),
                 ProductStatus.valueOf(d.getStatus()), d.getCreatedAt(), d.getUpdatedAt());
     }

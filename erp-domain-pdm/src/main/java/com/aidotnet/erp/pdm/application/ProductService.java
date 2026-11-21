@@ -13,6 +13,7 @@ import com.aidotnet.erp.pdm.domain.ProductStatus;
 import com.aidotnet.erp.pdm.domain.ProposalStatus;
 import com.aidotnet.erp.pdm.domain.SelectionProposal;
 import com.aidotnet.erp.pdm.domain.Sku;
+import com.aidotnet.erp.pdm.domain.SkuCode;
 import com.aidotnet.erp.pdm.domain.Spu;
 import com.aidotnet.erp.pdm.infrastructure.ProductStore;
 import java.math.BigDecimal;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -90,13 +92,19 @@ public class ProductService {
 
     @Transactional
     public Spu createSpu(String tenantId, CreateSpuCommand command) {
-        productStore.findCategory(tenantId, command.categoryId())
+        String categoryId = optionalIdentifier(command.categoryId());
+        String brandId = optionalIdentifier(command.brandId());
+        if (categoryId != null) {
+            productStore.findCategory(tenantId, categoryId)
                 .orElseThrow(() -> new BizException("CATEGORY_NOT_FOUND", "类目不存在"));
-        productStore.findBrand(tenantId, command.brandId())
+        }
+        if (brandId != null) {
+            productStore.findBrand(tenantId, brandId)
                 .orElseThrow(() -> new BizException("BRAND_NOT_FOUND", "品牌不存在"));
+        }
         Instant now = Instant.now();
         Spu spu = productStore.saveSpu(new Spu(UUID.randomUUID().toString(), tenantId, command.sku(),
-                command.title(), command.description(), command.categoryId(), command.brandId(),
+                command.title(), command.description(), categoryId, brandId,
                 ProductStatus.DRAFT, "none", now, now));
         eventPublisher.publish(new ProductCreatedEvent(UUID.randomUUID().toString(), tenantId, TraceContext.getTraceId(), spu.spuId(), now));
         return spu;
@@ -106,12 +114,19 @@ public class ProductService {
     public Spu updateSpu(String tenantId, String spuId, UpdateSpuCommand command) {
         Spu spu = productStore.findSpu(tenantId, spuId)
                 .orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
+        String categoryId = command.categoryId() == null ? spu.categoryId() : optionalIdentifier(command.categoryId());
+        String brandId = command.brandId() == null ? spu.brandId() : optionalIdentifier(command.brandId());
+        if (command.categoryId() != null && categoryId != null) {
+            productStore.findCategory(tenantId, categoryId).orElseThrow(() -> new BizException("CATEGORY_NOT_FOUND", "类目不存在"));
+        }
+        if (command.brandId() != null && brandId != null) {
+            productStore.findBrand(tenantId, brandId).orElseThrow(() -> new BizException("BRAND_NOT_FOUND", "品牌不存在"));
+        }
         Spu updated = new Spu(spu.spuId(), spu.tenantId(),
                 command.sku() != null ? command.sku() : spu.sku(),
                 command.title() != null ? command.title() : spu.title(),
                 command.description() != null ? command.description() : spu.description(),
-                command.categoryId() != null ? command.categoryId() : spu.categoryId(),
-                command.brandId() != null ? command.brandId() : spu.brandId(),
+                categoryId, brandId,
                 spu.status(), spu.ipStatus(), spu.createdAt(), Instant.now());
         return productStore.saveSpu(updated);
     }
@@ -121,14 +136,25 @@ public class ProductService {
                 .orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
     }
 
+    @Transactional
     public Sku createSku(String tenantId, String spuId, CreateSkuCommand command) {
         productStore.findSpu(tenantId, spuId).orElseThrow(() -> new BizException("SPU_NOT_FOUND", "SPU不存在"));
-        productStore.findSkuBySellerSku(tenantId, command.sellerSku()).ifPresent(existing -> {
+        String code = SkuCode.normalize(command.sellerSku());
+        productStore.findSkuBySellerSku(tenantId, code).ifPresent(existing -> {
             throw new BizException("SKU_DUPLICATED", "SKU已存在");
         });
         Instant now = Instant.now();
-        return productStore.saveSku(new Sku(UUID.randomUUID().toString(), tenantId, spuId, command.sellerSku(),
-                command.title(), command.weightKg(), command.declaredValue(), command.currency(), ProductStatus.DRAFT, now, now));
+        try {
+            return productStore.saveSku(new Sku(UUID.randomUUID().toString(), tenantId, spuId, code,
+                    command.title(), command.baseUnit(), command.weightKg(), command.declaredValue(), command.currency(),
+                    ProductStatus.DRAFT, now, now));
+        } catch (DuplicateKeyException ex) {
+            throw new BizException("SKU_DUPLICATED", "SKU已存在");
+        }
+    }
+
+    private static String optionalIdentifier(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 
     @Transactional
@@ -389,7 +415,12 @@ public class ProductService {
 
     public record UpdateSpuCommand(String sku, String title, String description, String categoryId, String brandId) {}
 
-    public record CreateSkuCommand(String sellerSku, String title, BigDecimal weightKg, BigDecimal declaredValue, String currency) {}
+    public record CreateSkuCommand(String sellerSku, String title, BigDecimal weightKg, BigDecimal declaredValue,
+                                   String currency, String baseUnit) {
+        public CreateSkuCommand(String sellerSku, String title, BigDecimal weightKg, BigDecimal declaredValue, String currency) {
+            this(sellerSku, title, weightKg, declaredValue, currency, null);
+        }
+    }
 
     public record CreateProposalCommand(String productName, String title, String categoryId, String source,
                                         String sourceReference, BigDecimal estimatedCost, String marketAnalysis,

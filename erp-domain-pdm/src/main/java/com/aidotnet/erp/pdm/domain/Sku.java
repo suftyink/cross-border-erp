@@ -21,8 +21,9 @@ import java.time.Instant;
  * @param skuId         SKU唯一标识
  * @param tenantId      租户ID
  * @param spuId         所属SPU ID
- * @param sellerSku     卖家SKU编码，租户内唯一
+ * @param sellerSku     ERP 本地 SKU 编码，租户内唯一；不同于平台 MSKU
  * @param title         SKU标题，包含规格描述
+ * @param baseUnit      基本库存单位，草稿允许暂未填写
  * @param weightKg      重量(千克)，用于物流运费计算
  * @param declaredValue 申报价值，用于清关申报
  * @param currency      申报价值币种，如 USD、CNY
@@ -31,5 +32,5 @@ import java.time.Instant;
  * @param updatedAt     更新时间
  * @author ERP系统
  */
-public record Sku(String skuId, String tenantId, String spuId, String sellerSku, String title, BigDecimal weightKg,
+public record Sku(String skuId, String tenantId, String spuId, String sellerSku, String title, String baseUnit, BigDecimal weightKg,
                   BigDecimal declaredValue, String currency, ProductStatus status, Instant createdAt, Instant updatedAt) {}

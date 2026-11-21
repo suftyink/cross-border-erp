@@ -2,6 +2,7 @@ package com.aidotnet.erp.pdm.api;
 
 import com.aidotnet.erp.common.api.Result;
 import com.aidotnet.erp.common.exception.BizException;
+import com.aidotnet.erp.common.security.RequirePermission;
 import com.aidotnet.erp.common.tenant.TenantContext;
 import com.aidotnet.erp.pdm.application.ProductService;
 import com.aidotnet.erp.pdm.application.ProductService.AssignDevTeamCommand;
@@ -23,8 +24,8 @@ import com.aidotnet.erp.pdm.domain.Sku;
 import com.aidotnet.erp.pdm.domain.Spu;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -73,6 +74,7 @@ public class ProductController {
 
     /** 创建类目 */
     @PostMapping("/categories")
+    @RequirePermission("pdm:product:write")
     public Result<Category> createCategory(@Valid @RequestBody CreateCategoryRequest request) {
         return Result.ok(productService.createCategory(currentTenant(), new CreateCategoryCommand(request.name(), request.parentId())));
     }
@@ -85,6 +87,7 @@ public class ProductController {
 
     /** 创建品牌 */
     @PostMapping("/brands")
+    @RequirePermission("pdm:product:write")
     public Result<Brand> createBrand(@Valid @RequestBody CreateBrandRequest request) {
         return Result.ok(productService.createBrand(currentTenant(), new CreateBrandCommand(request.name())));
     }
@@ -97,6 +100,7 @@ public class ProductController {
 
     /** 创建SPU */
     @PostMapping("/products")
+    @RequirePermission("pdm:product:write")
     public Result<Spu> createSpu(@Valid @RequestBody CreateSpuRequest request) {
         return Result.ok(productService.createSpu(currentTenant(), new CreateSpuCommand(request.sku(), request.title(),
                 request.description(), request.categoryId(), request.brandId())));
@@ -116,6 +120,7 @@ public class ProductController {
 
     /** 更新SPU */
     @PutMapping("/products/{spuId}")
+    @RequirePermission("pdm:product:write")
     public Result<Spu> updateSpu(@PathVariable String spuId, @Valid @RequestBody UpdateSpuRequest request) {
         return Result.ok(productService.updateSpu(currentTenant(), spuId, new UpdateSpuCommand(request.sku(),
                 request.title(), request.description(), request.categoryId(), request.brandId())));
@@ -123,15 +128,17 @@ public class ProductController {
 
     /** 更新SPU知识产权状态 */
     @PatchMapping("/products/{spuId}/ip-status")
+    @RequirePermission("pdm:product:write")
     public Result<Spu> updateIpStatus(@PathVariable String spuId, @Valid @RequestBody UpdateIpStatusRequest request) {
         return Result.ok(productService.updateIpStatus(currentTenant(), spuId, request.ipStatus()));
     }
 
     /** 创建SKU */
     @PostMapping("/products/{spuId}/skus")
+    @RequirePermission("pdm:product:write")
     public Result<Sku> createSku(@PathVariable String spuId, @Valid @RequestBody CreateSkuRequest request) {
         return Result.ok(productService.createSku(currentTenant(), spuId, new CreateSkuCommand(request.sellerSku(), request.title(),
-                request.weightKg(), request.declaredValue(), request.currency())));
+                request.weightKg(), request.declaredValue(), request.currency(), request.baseUnit())));
     }
 
     /** 查询SKU列表 */
@@ -142,12 +149,14 @@ public class ProductController {
 
     /** SPU上架 */
     @PatchMapping("/products/{spuId}/publish")
+    @RequirePermission("pdm:product:write")
     public Result<Spu> publishSpu(@PathVariable String spuId) {
         return Result.ok(productService.publishSpu(currentTenant(), spuId));
     }
 
     /** SPU下架 */
     @PatchMapping("/products/{spuId}/unpublish")
+    @RequirePermission("pdm:product:write")
     public Result<Spu> unpublishSpu(@PathVariable String spuId) {
         return Result.ok(productService.unpublishSpu(currentTenant(), spuId));
     }
@@ -242,11 +251,12 @@ public class ProductController {
     public record CreateCategoryRequest(@NotBlank String name, String parentId) {}
     public record CreateBrandRequest(@NotBlank String name) {}
     public record CreateSpuRequest(String sku, @NotBlank String title, String description,
-                                   @NotBlank String categoryId, @NotBlank String brandId) {}
+                                   @NotBlank String categoryId, @Size(max = 64) String brandId) {}
     public record UpdateSpuRequest(String sku, String title, String description, String categoryId, String brandId) {}
     public record UpdateIpStatusRequest(@NotBlank String ipStatus) {}
-    public record CreateSkuRequest(@NotBlank String sellerSku, @NotBlank String title, @NotNull @Positive BigDecimal weightKg,
-                                   @NotNull @Positive BigDecimal declaredValue, @NotBlank String currency) {}
+    public record CreateSkuRequest(@NotBlank @Size(max = 128) String sellerSku, @Size(max = 512) String title,
+                                   @Positive BigDecimal weightKg, @Positive BigDecimal declaredValue,
+                                   @Size(max = 8) String currency, @Size(max = 32) String baseUnit) {}
     public record CreateProposalRequest(String productName, @NotBlank String title, String categoryId, String source,
                                         String sourceReference, BigDecimal estimatedCost, String marketAnalysis,
                                         String profitEstimation, String riskAssessment, boolean aiSuggested) {}

@@ -41,6 +41,7 @@ const menuItems = [
   { key: '/pdm', icon: <AppstoreOutlined />, label: '产品开发', domain: 'pdm',
     children: [
       { key: '/pdm/products', label: '产品管理' },
+      { key: '/pdm/skus', label: 'SKU管理' },
       { key: '/pdm/listings', label: 'Listing管理' },
     ],
   },

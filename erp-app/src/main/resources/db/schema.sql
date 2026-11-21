@@ -939,6 +939,7 @@ CREATE TABLE IF NOT EXISTS pdm_sku (
     spu_id          VARCHAR(64)  NOT NULL,
     seller_sku      VARCHAR(128) NOT NULL,
     title           VARCHAR(512),
+    base_unit       VARCHAR(32),
     weight_kg       DECIMAL(10, 4),
     declared_value  DECIMAL(18, 2),
     currency        VARCHAR(8),
@@ -951,6 +952,7 @@ CREATE TABLE IF NOT EXISTS pdm_sku (
 CREATE INDEX idx_pdm_sku_tenant ON pdm_sku(tenant_id);
 CREATE INDEX idx_pdm_sku_seller ON pdm_sku(tenant_id, seller_sku);
 CREATE INDEX idx_pdm_sku_spu ON pdm_sku(spu_id);
+CREATE UNIQUE INDEX uq_pdm_sku_normalized_code ON pdm_sku(tenant_id, UPPER(TRIM(seller_sku)));
 
 -- 选品提报表: 管理选品提案全流程
 CREATE TABLE IF NOT EXISTS pdm_selection_proposal (

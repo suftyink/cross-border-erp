@@ -49,6 +49,10 @@ public interface ProductMapper {
     void insertSku(SkuDO sku);
     /** 更新SKU */
     void updateSku(SkuDO sku);
+    SkuDO selectSku(@Param("tenantId") String tenantId, @Param("skuId") String skuId);
+    SkuDO selectSkuForUpdate(@Param("tenantId") String tenantId, @Param("skuId") String skuId);
+    List<SkuDO> selectSkuDrafts(@Param("tenantId") String tenantId, @Param("keyword") String keyword,
+                              @Param("spuId") String spuId, @Param("status") String status);
     /** 按租户ID+卖家SKU编码查询SKU */
     SkuDO selectSkuBySellerSku(@Param("tenantId") String tenantId, @Param("sellerSku") String sellerSku);
     /** 按租户ID+SPU ID查询SKU列表 */
